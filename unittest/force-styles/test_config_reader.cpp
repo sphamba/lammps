@@ -13,9 +13,9 @@
 
 #include "test_config_reader.h"
 #include "test_config.h"
+#include "utils.h"
 #include "yaml.h"
 #include "yaml_reader.h"
-#include "utils.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -86,7 +86,7 @@ void TestConfigReader::prerequisites(const yaml_event_t &event)
     while (1) {
         data >> key >> value;
         if (data.eof()) break;
-        config.prerequisites.push_back(std::make_pair(key, value));
+        config.prerequisites.emplace_back(key, value);
     }
 }
 
@@ -141,7 +141,7 @@ void TestConfigReader::extract(const yaml_event_t &event)
     while (1) {
         data >> name >> value;
         if (data.eof()) break;
-        config.extract.push_back(make_pair(name, value));
+        config.extract.emplace_back(name, value);
     }
 }
 

@@ -61,7 +61,7 @@ namespace /* anonymous */
 {
 
 //typedef double TimerType;
-//TimerType getTimeStamp(void) { return MPI_Wtime(); }
+//TimerType getTimeStamp(void) { return platform::walltime(); }
 //double getElapsedTime( const TimerType &t0, const TimerType &t1) { return t1-t0; }
 
 typedef struct timespec TimerType;
@@ -1788,7 +1788,7 @@ void PairExp6rxKokkos<DeviceType>::read_file(char *file)
     while ((words[nwords++] = strtok(nullptr," \t\n\r\f"))) continue;
 
     for (ispecies = 0; ispecies < nspecies; ispecies++)
-      if (strcmp(words[0],&atom->dname[ispecies][0]) == 0) break;
+      if (strcmp(words[0],&atom->dvname[ispecies][0]) == 0) break;
     if (ispecies == nspecies) continue;
 
     // load up parameter settings and error check their values
@@ -1801,8 +1801,9 @@ void PairExp6rxKokkos<DeviceType>::read_file(char *file)
     }
 
     params[nparams].ispecies = ispecies;
-    params[nparams].name = utils::strdup(&atom->dname[ispecies][0]);
+    params[nparams].name = utils::strdup(&atom->dvname[ispecies][0]);
     params[nparams].potential = utils::strdup(words[1]);
+
     if (strcmp(params[nparams].potential,"exp6") == 0) {
       params[nparams].alpha = atof(words[2]);
       params[nparams].epsilon = atof(words[3]);
