@@ -1,4 +1,4 @@
-// Copyright moi 2021
+// Copyright Son Pham-Ba 2021
 
 #ifdef PAIR_CLASS
 
@@ -13,33 +13,33 @@ PairStyle(gran/cohesive/history,PairGranCohesiveHistory)
 
 namespace LAMMPS_NS {
 
-class PairGranCohesiveHistory : public PairGranHookeHistory {
- public:
-  PairGranCohesiveHistory(class LAMMPS *);
-  ~PairGranCohesiveHistory();
-  void compute(int, int);
-  void settings(int, char **);
-  void coeff(int, char **);
-  double single(int, int, int, int, double, double, double, double &);
-  // double init_one(int, int);
- protected:
-  void allocate();
+  class PairGranCohesiveHistory : public PairGranHookeHistory {
+  public:
+    PairGranCohesiveHistory(class LAMMPS *);
+    ~PairGranCohesiveHistory();
+    void compute(int, int);
+    void settings(int, char **);
+    void coeff(int, char **);
+    double single(int, int, int, int, double, double, double, double &);
+    // double init_one(int, int);
+  protected:
+    void allocate();
 
- private: // per-type coefficients, set in pair coeff command
-  // pairstyle parameters
-  double **E;
-  double **nu;
-  double **sigma_n_max;
-  double **sigma_t_max;
-  double **gamma;
-  double **scaling;
+  private: // per-type coefficients, set in pair coeff command
+    // pairstyle parameters
+    double **E;
+    double **nu;
+    double **sigma_n_max;
+    double **sigma_t_max;
+    double **gamma;
+    double **scaling;
 
-  // useful quantities computed directly from params
-  double **eps_e;
-  double **delta_f;
-  double **d_c;
-  double **c_factor;
-};
+    // useful quantities computed directly from params
+    double **eps_e;
+    double **delta_f;
+    double **d_c;
+    double **c_factor;
+  };
 
 }
 

@@ -1,4 +1,4 @@
-// Copyright moi 2021
+// Copyright Son Phamb-Ba 2021
 
 #include "pair_gran_cohesive_history.h"
 #include <cmath>
@@ -30,15 +30,15 @@ PairGranCohesiveHistory::~PairGranCohesiveHistory()
 
   if (allocated) {
     memory->destroy(E);
-	memory->destroy(nu);
-	memory->destroy(sigma_n_max);
-	memory->destroy(sigma_t_max);
-	memory->destroy(gamma);
-	memory->destroy(scaling);
-	memory->destroy(eps_e);
-	memory->destroy(delta_f);
-	memory->destroy(d_c);
-	memory->destroy(c_factor);
+    memory->destroy(nu);
+    memory->destroy(sigma_n_max);
+    memory->destroy(sigma_t_max);
+    memory->destroy(gamma);
+    memory->destroy(scaling);
+    memory->destroy(eps_e);
+    memory->destroy(delta_f);
+    memory->destroy(d_c);
+    memory->destroy(c_factor);
   }
 
   // destructor of PairGranHookeHistory is called after
@@ -83,7 +83,7 @@ void PairGranCohesiveHistory::compute(int eflag, int vflag)
     for (i = 0; i < nlocal; i++)
       if (body[i] >= 0) mass_rigid[i] = mass_body[body[i]];
       else mass_rigid[i] = 0.0;
-    comm->forward_comm_pair(this);
+    comm->forward_comm(this);
   }
 
   double **x = atom->x;
@@ -126,13 +126,13 @@ void PairGranCohesiveHistory::compute(int eflag, int vflag)
       delx = xtmp - x[j][0];
       dely = ytmp - x[j][1];
       delz = ztmp - x[j][2];
-	  jtype = type[j];
+      jtype = type[j];
       rsq = delx*delx + dely*dely + delz*delz;
       radj = radius[j];
       radsum = radi + radj;
-	  double delta_e = radsum * eps_e[itype][jtype]; // elastic limit
-	  double delta_f_adj = delta_e * pow(radsum / d_c[itype][jtype], scaling[itype][jtype]); // adjusted for large radii
-	  delta_f_adj = MAX(delta_f[itype][jtype], delta_f_adj);
+      double delta_e = radsum * eps_e[itype][jtype]; // elastic limit
+      double delta_f_adj = delta_e * pow(radsum / d_c[itype][jtype], scaling[itype][jtype]); // adjusted for large radii
+      delta_f_adj = MAX(delta_f[itype][jtype], delta_f_adj);
       double radsum_adh = radsum + delta_f_adj;
 
       if (rsq >= radsum_adh*radsum_adh) {
@@ -190,33 +190,33 @@ void PairGranCohesiveHistory::compute(int eflag, int vflag)
         if (mask[i] & freeze_group_bit) meff = mj;
         if (mask[j] & freeze_group_bit) meff = mi;
 
-		// Custom force here!
-		// radsum is the equilibrium distance
-		// double R_eq = sqrt(radi * radj); // equivalent single particle radius
-		double R_eq = MIN(radi, radj); // equivalent single particle radius
-		double A0 = 2.0 * sqrt(3.0) * R_eq * R_eq; // equivalent contact area, assuming hexagonal packing
-		double An = A0 / sqrt(6.0) / (1.0 - 2.0 * nu[itype][jtype]); // to balance between k_e and k_t, to have correct E and nu
-		double At = An * (1.0 - 4.0 * nu[itype][jtype]) / (1.0 + nu[itype][jtype]);
+	// Custom force here!
+	// radsum is the equilibrium distance
+	// double R_eq = sqrt(radi * radj); // equivalent single particle radius
+	double R_eq = MIN(radi, radj); // equivalent single particle radius
+	double A0 = 2.0 * sqrt(3.0) * R_eq * R_eq; // equivalent contact area, assuming hexagonal packing
+	double An = A0 / sqrt(6.0) / (1.0 - 2.0 * nu[itype][jtype]); // to balance between k_e and k_t, to have correct E and nu
+	double At = An * (1.0 - 4.0 * nu[itype][jtype]) / (1.0 + nu[itype][jtype]);
 
-		double delta = radsum - r; // normal interpenetration
-		double rescale_delta = MIN(1.0, 1.0 + delta / delta_f_adj);
-		// to rescale (decrease) forces when 0 < delta < delta_f_adj
+	double delta = radsum - r; // normal interpenetration
+	double rescale_delta = MIN(1.0, 1.0 + delta / delta_f_adj);
+	// to rescale (decrease) forces when 0 < delta < delta_f_adj
 
-		double k_ = E[itype][jtype] / radsum;
-		double k_e = An * k_; // stiffness elastic domain
-		double k_t = At * k_; // tangential stiffness elastic domain
-		double k_f = An * sigma_n_max[itype][jtype] / (delta_f_adj - delta_e); // stiffness fracture domain
+	double k_ = E[itype][jtype] / radsum;
+	double k_e = An * k_; // stiffness elastic domain
+	double k_t = At * k_; // tangential stiffness elastic domain
+	double k_f = An * sigma_n_max[itype][jtype] / (delta_f_adj - delta_e); // stiffness fracture domain
 
-		double c_n = c_factor[itype][jtype] * sqrt(meff * k_e); // damping normal direction
-		double c_t = c_factor[itype][jtype] * sqrt(meff * k_t); // damping tangential direction
+	double c_n = c_factor[itype][jtype] * sqrt(meff * k_e); // damping normal direction
+	double c_t = c_factor[itype][jtype] * sqrt(meff * k_t); // damping tangential direction
 
-		double F_normal = delta >= -delta_e ? k_e * delta : -k_f * (delta + delta_f_adj);
-		// delta_f is adjusted to take care of the case when delta_f < delta_e and conserve sigma_n_max
+	double F_normal = delta >= -delta_e ? k_e * delta : -k_f * (delta + delta_f_adj);
+	// delta_f is adjusted to take care of the case when delta_f < delta_e and conserve sigma_n_max
 
         // normal forces = Hookian contact + normal velocity damping
 
         damp = c_n*vnnr*rsqinv;
-		ccel = F_normal * rinv - damp; // Normal force in w direction = ccel * delw
+	ccel = F_normal * rinv - damp; // Normal force in w direction = ccel * delw
 
         // relative velocities (taking into account rotations and distance between particles?)
 
@@ -276,7 +276,7 @@ void PairGranCohesiveHistory::compute(int eflag, int vflag)
 
         // forces & torques
 
-		// ccel: normal force magnitude (why this name???)
+	// ccel: normal force magnitude (why this name???)
         fx = delx*ccel + fs1;
         fy = dely*ccel + fs2;
         fz = delz*ccel + fs3;
@@ -311,7 +311,7 @@ void PairGranCohesiveHistory::compute(int eflag, int vflag)
 
 /* ----------------------------------------------------------------------
    allocate all arrays
-------------------------------------------------------------------------- */
+   ------------------------------------------------------------------------- */
 
 void PairGranCohesiveHistory::allocate()
 {
@@ -344,7 +344,7 @@ void PairGranCohesiveHistory::allocate()
 
 /* ----------------------------------------------------------------------
    global settings
-------------------------------------------------------------------------- */
+   ------------------------------------------------------------------------- */
 
 void PairGranCohesiveHistory::settings(int narg, char **arg)
 {
@@ -353,7 +353,7 @@ void PairGranCohesiveHistory::settings(int narg, char **arg)
 
 /* ----------------------------------------------------------------------
    set coeffs for one or more type pairs
-------------------------------------------------------------------------- */
+   ------------------------------------------------------------------------- */
 
 void PairGranCohesiveHistory::coeff(int narg, char **arg)
 {
@@ -362,52 +362,52 @@ void PairGranCohesiveHistory::coeff(int narg, char **arg)
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
-  utils::bounds(FLERR,arg[0],1,atom->ntypes,ilo,ihi,error);
-  utils::bounds(FLERR,arg[1],1,atom->ntypes,jlo,jhi,error);
+  utils::bounds(FLERR, arg[0], 1, atom->ntypes, ilo, ihi, error);
+  utils::bounds(FLERR, arg[1], 1, atom->ntypes, jlo, jhi, error);
 
   int count = 0;
   for (int i = ilo; i <= ihi; i++) {
     for (int j = MAX(jlo,i); j <= jhi; j++) {
-	  E[i][j]           = utils::numeric(FLERR,arg[2], false, lmp);
-	  nu[i][j]          = utils::numeric(FLERR,arg[3], false, lmp);
-	  sigma_n_max[i][j] = utils::numeric(FLERR,arg[4], false, lmp);
-	  sigma_t_max[i][j] = utils::numeric(FLERR,arg[5], false, lmp);
-	  gamma[i][j]       = utils::numeric(FLERR,arg[6], false, lmp);
-	  scaling[i][j]     =-utils::numeric(FLERR,arg[7], false, lmp);
-	  double restit     = utils::numeric(FLERR,arg[8], false, lmp);
+      E[i][j]           = utils::numeric(FLERR,arg[2],false,lmp);
+      nu[i][j]          = utils::numeric(FLERR,arg[3],false,lmp);
+      sigma_n_max[i][j] = utils::numeric(FLERR,arg[4],false,lmp);
+      sigma_t_max[i][j] = utils::numeric(FLERR,arg[5],false,lmp);
+      gamma[i][j]       = utils::numeric(FLERR,arg[6],false,lmp);
+      scaling[i][j]     =-utils::numeric(FLERR,arg[7],false,lmp);
+      double restit     = utils::numeric(FLERR,arg[8],false,lmp);
 
-	  if (E[i][j] < 0.0 || sigma_n_max[i][j] < 0.0 || sigma_t_max[i][j] < 0.0 || gamma[i][j] < 0.0 ||
-			   scaling[i][j] > 0.0)
-		error->all(FLERR,"Incorrect args for pair coefficients");
+      if (E[i][j] < 0.0 || sigma_n_max[i][j] < 0.0 || sigma_t_max[i][j] < 0.0 || gamma[i][j] < 0.0 ||
+	  scaling[i][j] > 0.0)
+	error->all(FLERR,"Incorrect args for pair coefficients");
 
-	  if (nu[i][j] <= -1.0 || nu[i][j] > 0.25)
-		error->all(FLERR,"Incorrect args for pair coefficients: nu must be between -1 and 0.25");
+      if (nu[i][j] <= -1.0 || nu[i][j] > 0.25)
+	error->all(FLERR,"Incorrect args for pair coefficients: nu must be between -1 and 0.25");
 
-	  if (scaling[i][j] < -1.0)
-		error->all(FLERR,"Incorrect args for pair coefficients: scaling > 1 not implemented");
+      if (scaling[i][j] < -1.0)
+	error->all(FLERR,"Incorrect args for pair coefficients: scaling > 1 not implemented");
 
-	  // convert from pressure units to force/distance^2
+      // convert from pressure units to force/distance^2
 
-	  E[i][j] /= force->nktv2p;
-	  sigma_n_max[i][j] /= force->nktv2p;
-	  sigma_t_max[i][j] /= force->nktv2p;
-	  
-	  // compute useful quantities
-	  eps_e[i][j] = sigma_n_max[i][j] / E[i][j];
-	  delta_f[i][j] = 4.0 * gamma[i][j] / sigma_n_max[i][j]; // fracture delta
-	  d_c[i][j] = 4.0 * gamma[i][j] * E[i][j] / (sigma_n_max[i][j] * sigma_n_max[i][j]); // critical diameter
-	  c_factor[i][j] = 2.0 * (1.0 - restit) / M_PI;
+      E[i][j] /= force->nktv2p;
+      sigma_n_max[i][j] /= force->nktv2p;
+      sigma_t_max[i][j] /= force->nktv2p;
+        
+      // compute useful quantities
+      eps_e[i][j] = sigma_n_max[i][j] / E[i][j];
+      delta_f[i][j] = 4.0 * gamma[i][j] / sigma_n_max[i][j]; // fracture delta
+      d_c[i][j] = 4.0 * gamma[i][j] * E[i][j] / (sigma_n_max[i][j] * sigma_n_max[i][j]); // critical diameter
+      c_factor[i][j] = 2.0 * (1.0 - restit) / M_PI;
 
-	  E[j][i] = E[i][j];
-	  nu[j][i] = nu[i][j];
-	  sigma_n_max[j][i] = sigma_n_max[i][j];
-	  sigma_t_max[j][i] = sigma_t_max[i][j];
-	  gamma[j][i] = gamma[i][j];
-	  scaling[j][i] = scaling[i][j];
-	  eps_e[j][i] = eps_e[i][j];
-	  delta_f[j][i] = delta_f[i][j];
-	  d_c[j][i] = d_c[i][j];
-	  c_factor[j][i] = c_factor[i][j];
+      E[j][i] = E[i][j];
+      nu[j][i] = nu[i][j];
+      sigma_n_max[j][i] = sigma_n_max[i][j];
+      sigma_t_max[j][i] = sigma_t_max[i][j];
+      gamma[j][i] = gamma[i][j];
+      scaling[j][i] = scaling[i][j];
+      eps_e[j][i] = eps_e[i][j];
+      delta_f[j][i] = delta_f[i][j];
+      d_c[j][i] = d_c[i][j];
+      c_factor[j][i] = c_factor[i][j];
 
       setflag[i][j] = 1;
       count++;
@@ -422,7 +422,7 @@ void PairGranCohesiveHistory::coeff(int narg, char **arg)
 
 /* ----------------------------------------------------------------------
    init for one type pair i,j and corresponding j,i
-------------------------------------------------------------------------- */
+   ------------------------------------------------------------------------- */
 /*
 double PairGranCohesiveHistory::init_one(int i, int j)
 {
@@ -440,9 +440,9 @@ double PairGranCohesiveHistory::init_one(int i, int j)
 /* ---------------------------------------------------------------------- */
 
 double PairGranCohesiveHistory::single(int i, int j, int itype, int jtype,
-                                    double rsq,
-                                    double /*factor_coul*/, double /*factor_lj*/,
-                                    double &fforce)
+				       double rsq,
+				       double /*factor_coul*/, double /*factor_lj*/,
+				       double &fforce)
 {
   double radi,radj,radsum;
   double r,rinv,rsqinv,delx,dely,delz;
