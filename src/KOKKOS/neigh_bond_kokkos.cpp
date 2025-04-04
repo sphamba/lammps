@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -27,6 +27,7 @@
 #include "force.h"
 #include "memory_kokkos.h"
 #include "modify.h"
+#include "neighbor.h"
 #include "output.h"
 #include "thermo.h"
 #include "update.h"
@@ -35,8 +36,8 @@
 #include <cstring>
 using namespace LAMMPS_NS;
 
-#define BONDDELTA 10000
-#define LB_FACTOR 1.5
+static constexpr int BONDDELTA = 10000;
+static constexpr double LB_FACTOR = 1.5;
 
 /* ---------------------------------------------------------------------- */
 
@@ -50,13 +51,16 @@ NeighBondKokkos<DeviceType>::NeighBondKokkos(LAMMPS *lmp) : Pointers(lmp)
   datamask_read = EMPTY_MASK;
   datamask_modify = EMPTY_MASK;
 
-  k_nlist = DAT::tdual_int_scalar("NeighBond:nlist");
-  d_nlist = k_nlist.view<DeviceType>();
-  h_nlist = k_nlist.h_view;
+  // use 1D view for scalars to reduce GPU memory operations
 
-  k_fail_flag = DAT::tdual_int_scalar("NeighBond:fail_flag");
-  d_fail_flag = k_fail_flag.view<DeviceType>();
-  h_fail_flag = k_fail_flag.h_view;
+  d_scalars = typename AT::t_int_1d("NeighBond:scalars",2);
+  h_scalars = HAT::t_int_1d("NeighBond:scalars_mirror",2);
+
+  d_nlist = Kokkos::subview(d_scalars,0);
+  d_fail_flag = Kokkos::subview(d_scalars,1);
+
+  h_nlist = Kokkos::subview(h_scalars,0);
+  h_fail_flag = Kokkos::subview(h_scalars,1);
 
   maxbond = 0;
   maxangle = 0;
@@ -109,9 +113,8 @@ void NeighBondKokkos<DeviceType>::init_topology_kk() {
   int i,m;
   int bond_off = 0;
   int angle_off = 0;
-  for (i = 0; i < modify->nfix; i++)
-    if ((strcmp(modify->fix[i]->style,"shake") == 0)
-        || (strcmp(modify->fix[i]->style,"rattle") == 0))
+  for (const auto &ifix : modify->get_fix_list())
+    if (utils::strmatch(ifix->style,"^shake") || utils::strmatch(ifix->style,"^rattle"))
       bond_off = angle_off = 1;
   if (force->bond && force->bond_match("quartic")) bond_off = 1;
 
@@ -240,22 +243,14 @@ void NeighBondKokkos<DeviceType>::bond_all()
   do {
     nmissing = 0;
 
-    h_nlist() = 0;
-    k_nlist.template modify<LMPHostType>();
-    k_nlist.template sync<DeviceType>();
-
-    h_fail_flag() = 0;
-    k_fail_flag.template modify<LMPHostType>();
-    k_fail_flag.template sync<DeviceType>();
+    Kokkos::deep_copy(d_scalars,0);
 
     Kokkos::parallel_reduce(Kokkos::RangePolicy<DeviceType, TagNeighBondBondAll>(0,nlocal),*this,nmissing);
 
-    k_nlist.template modify<DeviceType>();
-    k_nlist.template sync<LMPHostType>();
+    Kokkos::deep_copy(h_scalars,d_scalars);
+
     neighbor->nbondlist = h_nlist();
 
-    k_fail_flag.template modify<DeviceType>();
-    k_fail_flag.template sync<LMPHostType>();
     if (h_fail_flag()) {
       maxbond = neighbor->nbondlist + BONDDELTA;
       memoryKK->grow_kokkos(k_bondlist,neighbor->bondlist,maxbond,3,"neighbor:neighbor->bondlist");
@@ -264,15 +259,16 @@ void NeighBondKokkos<DeviceType>::bond_all()
   } while (h_fail_flag());
 
   if (nmissing && lostbond == Thermo::ERROR)
-    error->one(FLERR,"Bond atoms missing at step {}", update->ntimestep);
+    error->one(FLERR, Error::NOLASTLINE, "Bond atoms missing at step {}" + utils::errorurl(5),
+               update->ntimestep);
 
   if (neighbor->cluster_check) bond_check();
   if (lostbond == Thermo::IGNORE) return;
 
   int all;
   MPI_Allreduce(&nmissing,&all,1,MPI_INT,MPI_SUM,world);
-  if (all && me ==0)
-    error->warning(FLERR,"Bond atoms missing at step {}", update->ntimestep);
+  if (all && me == 0)
+    error->warning(FLERR,"Bond atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   k_bondlist.modify<DeviceType>();
 }
@@ -291,7 +287,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondBondAll, const int &i, 
     if (newton_bond || i < atom1) {
       const int nbondlist = Kokkos::atomic_fetch_add(&d_nlist(),1);
       if (nbondlist >= maxbond && !d_fail_flag())
-        Kokkos::atomic_fetch_add(&d_fail_flag(),1);
+        d_fail_flag() = 1;
       if (d_fail_flag()) continue;
       v_bondlist(nbondlist,0) = i;
       v_bondlist(nbondlist,1) = atom1;
@@ -305,7 +301,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondBondAll, const int &i, 
 template<class DeviceType>
 void NeighBondKokkos<DeviceType>::bond_template()
 {
-  error->all(FLERR,"Cannot (yet) use molecular templates with Kokkos");
+  error->all(FLERR, Error::NOLASTLINE, "Cannot (yet) use molecular templates with Kokkos");
 }
 
 /* ---------------------------------------------------------------------- */
@@ -327,22 +323,14 @@ void NeighBondKokkos<DeviceType>::bond_partial()
   do {
     nmissing = 0;
 
-    h_nlist() = 0;
-    k_nlist.template modify<LMPHostType>();
-    k_nlist.template sync<DeviceType>();
-
-    h_fail_flag() = 0;
-    k_fail_flag.template modify<LMPHostType>();
-    k_fail_flag.template sync<DeviceType>();
+    Kokkos::deep_copy(d_scalars,0);
 
     Kokkos::parallel_reduce(Kokkos::RangePolicy<DeviceType, TagNeighBondBondPartial>(0,nlocal),*this,nmissing);
 
-    k_nlist.template modify<DeviceType>();
-    k_nlist.template sync<LMPHostType>();
+    Kokkos::deep_copy(h_scalars,d_scalars);
+
     neighbor->nbondlist = h_nlist();
 
-    k_fail_flag.template modify<DeviceType>();
-    k_fail_flag.template sync<LMPHostType>();
     if (h_fail_flag()) {
       maxbond = neighbor->nbondlist + BONDDELTA;
       memoryKK->grow_kokkos(k_bondlist,neighbor->bondlist,maxbond,3,"neighbor:neighbor->bondlist");
@@ -351,15 +339,15 @@ void NeighBondKokkos<DeviceType>::bond_partial()
   } while (h_fail_flag());
 
   if (nmissing && lostbond == Thermo::ERROR)
-    error->one(FLERR,"Bond atoms missing at step {}", update->ntimestep);
+    error->one(FLERR, Error::NOLASTLINE, "Bond atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   if (neighbor->cluster_check) bond_check();
   if (lostbond == Thermo::IGNORE) return;
 
   int all;
   MPI_Allreduce(&nmissing,&all,1,MPI_INT,MPI_SUM,world);
-  if (all && me ==0)
-    error->warning(FLERR,"Bond atoms missing at step {}", update->ntimestep);
+  if (all && me == 0)
+    error->warning(FLERR, "Bond atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   k_bondlist.modify<DeviceType>();
 }
@@ -379,7 +367,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondBondPartial, const int 
     if (newton_bond || i < atom1) {
       const int nbondlist = Kokkos::atomic_fetch_add(&d_nlist(),1);
       if (nbondlist >= maxbond && !d_fail_flag())
-        Kokkos::atomic_fetch_add(&d_fail_flag(),1);
+        d_fail_flag() = 1;
       if (d_fail_flag()) continue;
       v_bondlist(nbondlist,0) = i;
       v_bondlist(nbondlist,1) = atom1;
@@ -402,7 +390,7 @@ void NeighBondKokkos<DeviceType>::bond_check()
 
   int flag_all;
   MPI_Allreduce(&flag,&flag_all,1,MPI_INT,MPI_SUM,world);
-  if (flag_all) error->all(FLERR,"Bond extent > half of periodic box length");
+  if (flag_all) error->all(FLERR, Error::NOLASTLINE, "Bond extent > half of periodic box length");
 }
 
 template<class DeviceType>
@@ -440,22 +428,14 @@ void NeighBondKokkos<DeviceType>::angle_all()
   do {
     nmissing = 0;
 
-    h_nlist() = 0;
-    k_nlist.template modify<LMPHostType>();
-    k_nlist.template sync<DeviceType>();
-
-    h_fail_flag() = 0;
-    k_fail_flag.template modify<LMPHostType>();
-    k_fail_flag.template sync<DeviceType>();
+    Kokkos::deep_copy(d_scalars,0);
 
     Kokkos::parallel_reduce(Kokkos::RangePolicy<DeviceType, TagNeighBondAngleAll>(0,nlocal),*this,nmissing);
 
-    k_nlist.template modify<DeviceType>();
-    k_nlist.template sync<LMPHostType>();
+    Kokkos::deep_copy(h_scalars,d_scalars);
+
     neighbor->nanglelist = h_nlist();
 
-    k_fail_flag.template modify<DeviceType>();
-    k_fail_flag.template sync<LMPHostType>();
     if (h_fail_flag()) {
       maxangle = neighbor->nanglelist + BONDDELTA;
       memoryKK->grow_kokkos(k_anglelist,neighbor->anglelist,maxangle,4,"neighbor:neighbor->anglelist");
@@ -464,7 +444,7 @@ void NeighBondKokkos<DeviceType>::angle_all()
   } while (h_fail_flag());
 
   if (nmissing && lostbond == Thermo::ERROR)
-    error->one(FLERR,"Angle atoms missing at step {}", update->ntimestep);
+    error->one(FLERR, Error::NOLASTLINE, "Angle atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   if (neighbor->cluster_check) angle_check();
   if (lostbond == Thermo::IGNORE) return;
@@ -472,7 +452,7 @@ void NeighBondKokkos<DeviceType>::angle_all()
   int all;
   MPI_Allreduce(&nmissing,&all,1,MPI_INT,MPI_SUM,world);
   if (all && (me == 0))
-    error->warning(FLERR,"Angle atoms missing at step {}", update->ntimestep);
+    error->warning(FLERR, "Angle atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   k_anglelist.modify<DeviceType>();
 }
@@ -495,7 +475,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondAngleAll, const int &i,
     if (newton_bond || (i <= atom1 && i <= atom2 && i <= atom3)) {
       const int nanglelist = Kokkos::atomic_fetch_add(&d_nlist(),1);
       if (nanglelist >= maxangle && !d_fail_flag())
-        Kokkos::atomic_fetch_add(&d_fail_flag(),1);
+        d_fail_flag() = 1;
       if (d_fail_flag()) continue;
       v_anglelist(nanglelist,0) = atom1;
       v_anglelist(nanglelist,1) = atom2;
@@ -510,7 +490,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondAngleAll, const int &i,
 template<class DeviceType>
 void NeighBondKokkos<DeviceType>::angle_template()
 {
-  error->all(FLERR,"Cannot (yet) use molecular templates with Kokkos");
+  error->all(FLERR, Error::NOLASTLINE, "Cannot (yet) use molecular templates with Kokkos");
 }
 
 /* ---------------------------------------------------------------------- */
@@ -534,22 +514,14 @@ void NeighBondKokkos<DeviceType>::angle_partial()
   do {
     nmissing = 0;
 
-    h_nlist() = 0;
-    k_nlist.template modify<LMPHostType>();
-    k_nlist.template sync<DeviceType>();
-
-    h_fail_flag() = 0;
-    k_fail_flag.template modify<LMPHostType>();
-    k_fail_flag.template sync<DeviceType>();
+    Kokkos::deep_copy(d_scalars,0);
 
     Kokkos::parallel_reduce(Kokkos::RangePolicy<DeviceType, TagNeighBondAnglePartial>(0,nlocal),*this,nmissing);
 
-    k_nlist.template modify<DeviceType>();
-    k_nlist.template sync<LMPHostType>();
+    Kokkos::deep_copy(h_scalars,d_scalars);
+
     neighbor->nanglelist = h_nlist();
 
-    k_fail_flag.template modify<DeviceType>();
-    k_fail_flag.template sync<LMPHostType>();
     if (h_fail_flag()) {
       maxangle = neighbor->nanglelist + BONDDELTA;
       memoryKK->grow_kokkos(k_anglelist,neighbor->anglelist,maxangle,4,"neighbor:neighbor->anglelist");
@@ -558,7 +530,7 @@ void NeighBondKokkos<DeviceType>::angle_partial()
   } while (h_fail_flag());
 
   if (nmissing && lostbond == Thermo::ERROR)
-    error->one(FLERR,"Angle atoms missing at step {}", update->ntimestep);
+    error->one(FLERR, Error::NOLASTLINE, "Angle atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   if (neighbor->cluster_check) angle_check();
   if (lostbond == Thermo::IGNORE) return;
@@ -566,7 +538,7 @@ void NeighBondKokkos<DeviceType>::angle_partial()
   int all;
   MPI_Allreduce(&nmissing,&all,1,MPI_INT,MPI_SUM,world);
   if (all && (me == 0))
-    error->warning(FLERR,"Angle atoms missing at step {}", update->ntimestep);
+    error->warning(FLERR, "Angle atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   k_anglelist.modify<DeviceType>();
 }
@@ -590,7 +562,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondAnglePartial, const int
     if (newton_bond || (i <= atom1 && i <= atom2 && i <= atom3)) {
       const int nanglelist = Kokkos::atomic_fetch_add(&d_nlist(),1);
       if (nanglelist >= maxangle && !d_fail_flag())
-        Kokkos::atomic_fetch_add(&d_fail_flag(),1);
+        d_fail_flag() = 1;
       if (d_fail_flag()) continue;
       v_anglelist(nanglelist,0) = atom1;
       v_anglelist(nanglelist,1) = atom2;
@@ -617,7 +589,7 @@ void NeighBondKokkos<DeviceType>::angle_check()
 
   int flag_all;
   MPI_Allreduce(&flag,&flag_all,1,MPI_INT,MPI_SUM,world);
-  if (flag_all) error->all(FLERR,"Angle extent > half of periodic box length");
+  if (flag_all) error->all(FLERR, Error::NOLASTLINE, "Angle extent > half of periodic box length");
 }
 
 template<class DeviceType>
@@ -667,22 +639,14 @@ void NeighBondKokkos<DeviceType>::dihedral_all()
   do {
     nmissing = 0;
 
-    h_nlist() = 0;
-    k_nlist.template modify<LMPHostType>();
-    k_nlist.template sync<DeviceType>();
-
-    h_fail_flag() = 0;
-    k_fail_flag.template modify<LMPHostType>();
-    k_fail_flag.template sync<DeviceType>();
+    Kokkos::deep_copy(d_scalars,0);
 
     Kokkos::parallel_reduce(Kokkos::RangePolicy<DeviceType, TagNeighBondDihedralAll>(0,nlocal),*this,nmissing);
 
-    k_nlist.template modify<DeviceType>();
-    k_nlist.template sync<LMPHostType>();
+    Kokkos::deep_copy(h_scalars,d_scalars);
+
     neighbor->ndihedrallist = h_nlist();
 
-    k_fail_flag.template modify<DeviceType>();
-    k_fail_flag.template sync<LMPHostType>();
     if (h_fail_flag()) {
       maxdihedral = neighbor->ndihedrallist + BONDDELTA;
       memoryKK->grow_kokkos(k_dihedrallist,neighbor->dihedrallist,maxdihedral,5,"neighbor:neighbor->dihedrallist");
@@ -691,7 +655,7 @@ void NeighBondKokkos<DeviceType>::dihedral_all()
   } while (h_fail_flag());
 
   if (nmissing && lostbond == Thermo::ERROR)
-    error->one(FLERR,"Dihedral atoms missing at step {}", update->ntimestep);
+    error->one(FLERR, Error::NOLASTLINE, "Dihedral atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   if (neighbor->cluster_check) dihedral_check(neighbor->ndihedrallist,v_dihedrallist);
   if (lostbond == Thermo::IGNORE) return;
@@ -699,7 +663,7 @@ void NeighBondKokkos<DeviceType>::dihedral_all()
   int all;
   MPI_Allreduce(&nmissing,&all,1,MPI_INT,MPI_SUM,world);
   if (all && (me == 0))
-    error->warning(FLERR,"Dihedral atoms missing at step {}", update->ntimestep);
+    error->warning(FLERR, "Dihedral atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   k_dihedrallist.modify<DeviceType>();
 }
@@ -725,7 +689,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondDihedralAll, const int 
         (i <= atom1 && i <= atom2 && i <= atom3 && i <= atom4)) {
       const int ndihedrallist = Kokkos::atomic_fetch_add(&d_nlist(),1);
       if (ndihedrallist >= maxdihedral && !d_fail_flag())
-        Kokkos::atomic_fetch_add(&d_fail_flag(),1);
+        d_fail_flag() = 1;
       if (d_fail_flag()) continue;
       v_dihedrallist(ndihedrallist,0) = atom1;
       v_dihedrallist(ndihedrallist,1) = atom2;
@@ -741,7 +705,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondDihedralAll, const int 
 template<class DeviceType>
 void NeighBondKokkos<DeviceType>::dihedral_template()
 {
-  error->all(FLERR,"Cannot (yet) use molecular templates with Kokkos");
+  error->all(FLERR, Error::NOLASTLINE, "Cannot (yet) use molecular templates with Kokkos");
 }
 
 /* ---------------------------------------------------------------------- */
@@ -766,22 +730,14 @@ void NeighBondKokkos<DeviceType>::dihedral_partial()
   do {
     nmissing = 0;
 
-    h_nlist() = 0;
-    k_nlist.template modify<LMPHostType>();
-    k_nlist.template sync<DeviceType>();
-
-    h_fail_flag() = 0;
-    k_fail_flag.template modify<LMPHostType>();
-    k_fail_flag.template sync<DeviceType>();
+    Kokkos::deep_copy(d_scalars,0);
 
     Kokkos::parallel_reduce(Kokkos::RangePolicy<DeviceType, TagNeighBondDihedralPartial>(0,nlocal),*this,nmissing);
 
-    k_nlist.template modify<DeviceType>();
-    k_nlist.template sync<LMPHostType>();
+    Kokkos::deep_copy(h_scalars,d_scalars);
+
     neighbor->ndihedrallist = h_nlist();
 
-    k_fail_flag.template modify<DeviceType>();
-    k_fail_flag.template sync<LMPHostType>();
     if (h_fail_flag()) {
       maxdihedral = neighbor->ndihedrallist + BONDDELTA;
       memoryKK->grow_kokkos(k_dihedrallist,neighbor->dihedrallist,maxdihedral,5,"neighbor:neighbor->dihedrallist");
@@ -790,7 +746,7 @@ void NeighBondKokkos<DeviceType>::dihedral_partial()
   } while (h_fail_flag());
 
   if (nmissing && lostbond == Thermo::ERROR)
-    error->one(FLERR,"Dihedral atoms missing at step {}", update->ntimestep);
+    error->one(FLERR, Error::NOLASTLINE, "Dihedral atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   if (neighbor->cluster_check) dihedral_check(neighbor->ndihedrallist,v_dihedrallist);
   if (lostbond == Thermo::IGNORE) return;
@@ -798,7 +754,7 @@ void NeighBondKokkos<DeviceType>::dihedral_partial()
   int all;
   MPI_Allreduce(&nmissing,&all,1,MPI_INT,MPI_SUM,world);
   if (all && (me == 0))
-    error->warning(FLERR,"Dihedral atoms missing at step {}", update->ntimestep);
+    error->warning(FLERR, "Dihedral atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   k_dihedrallist.modify<DeviceType>();
 }
@@ -825,7 +781,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondDihedralPartial, const 
         (i <= atom1 && i <= atom2 && i <= atom3 && i <= atom4)) {
       const int ndihedrallist = Kokkos::atomic_fetch_add(&d_nlist(),1);
       if (ndihedrallist >= maxdihedral && !d_fail_flag())
-        Kokkos::atomic_fetch_add(&d_fail_flag(),1);
+        d_fail_flag() = 1;
       if (d_fail_flag()) continue;
       v_dihedrallist(ndihedrallist,0) = atom1;
       v_dihedrallist(ndihedrallist,1) = atom2;
@@ -855,7 +811,7 @@ void NeighBondKokkos<DeviceType>::dihedral_check(int nlist, typename AT::t_int_2
   int flag_all;
   MPI_Allreduce(&flag,&flag_all,1,MPI_INT,MPI_SUM,world);
   if (flag_all)
-    error->all(FLERR,"Dihedral/improper extent > half of periodic box length");
+    error->all(FLERR, Error::NOLASTLINE, "Dihedral/improper extent > half of periodic box length");
 }
 
 template<class DeviceType>
@@ -921,22 +877,14 @@ void NeighBondKokkos<DeviceType>::improper_all()
   do {
     nmissing = 0;
 
-    h_nlist() = 0;
-    k_nlist.template modify<LMPHostType>();
-    k_nlist.template sync<DeviceType>();
-
-    h_fail_flag() = 0;
-    k_fail_flag.template modify<LMPHostType>();
-    k_fail_flag.template sync<DeviceType>();
+    Kokkos::deep_copy(d_scalars,0);
 
     Kokkos::parallel_reduce(Kokkos::RangePolicy<DeviceType, TagNeighBondImproperAll>(0,nlocal),*this,nmissing);
 
-    k_nlist.template modify<DeviceType>();
-    k_nlist.template sync<LMPHostType>();
+    Kokkos::deep_copy(h_scalars,d_scalars);
+
     neighbor->nimproperlist = h_nlist();
 
-    k_fail_flag.template modify<DeviceType>();
-    k_fail_flag.template sync<LMPHostType>();
     if (h_fail_flag()) {
       maximproper = neighbor->nimproperlist + BONDDELTA;
       memoryKK->grow_kokkos(k_improperlist,neighbor->improperlist,maximproper,5,"neighbor:neighbor->improperlist");
@@ -945,7 +893,7 @@ void NeighBondKokkos<DeviceType>::improper_all()
   } while (h_fail_flag());
 
   if (nmissing && lostbond == Thermo::ERROR)
-    error->one(FLERR,"Improper atoms missing at step {}", update->ntimestep);
+    error->one(FLERR, Error::NOLASTLINE, "Improper atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   if (neighbor->cluster_check) dihedral_check(neighbor->nimproperlist,v_improperlist);
   if (lostbond == Thermo::IGNORE) return;
@@ -953,7 +901,7 @@ void NeighBondKokkos<DeviceType>::improper_all()
   int all;
   MPI_Allreduce(&nmissing,&all,1,MPI_INT,MPI_SUM,world);
   if (all && (me == 0))
-    error->warning(FLERR,"Improper atoms missing at step {}", update->ntimestep);
+    error->warning(FLERR, "Improper atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   k_improperlist.modify<DeviceType>();
 }
@@ -979,7 +927,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondImproperAll, const int 
         (i <= atom1 && i <= atom2 && i <= atom3 && i <= atom4)) {
       const int nimproperlist = Kokkos::atomic_fetch_add(&d_nlist(),1);
       if (nimproperlist >= maximproper && !d_fail_flag())
-        Kokkos::atomic_fetch_add(&d_fail_flag(),1);
+        d_fail_flag() = 1;
       if (d_fail_flag()) continue;
       v_improperlist(nimproperlist,0) = atom1;
       v_improperlist(nimproperlist,1) = atom2;
@@ -995,7 +943,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondImproperAll, const int 
 template<class DeviceType>
 void NeighBondKokkos<DeviceType>::improper_template()
 {
-  error->all(FLERR,"Cannot (yet) use molecular templates with Kokkos");
+  error->all(FLERR, Error::NOLASTLINE, "Cannot (yet) use molecular templates with Kokkos");
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1020,22 +968,14 @@ void NeighBondKokkos<DeviceType>::improper_partial()
   do {
     nmissing = 0;
 
-    h_nlist() = 0;
-    k_nlist.template modify<LMPHostType>();
-    k_nlist.template sync<DeviceType>();
-
-    h_fail_flag() = 0;
-    k_fail_flag.template modify<LMPHostType>();
-    k_fail_flag.template sync<DeviceType>();
+    Kokkos::deep_copy(d_scalars,0);
 
     Kokkos::parallel_reduce(Kokkos::RangePolicy<DeviceType, TagNeighBondImproperPartial>(0,nlocal),*this,nmissing);
 
-    k_nlist.template modify<DeviceType>();
-    k_nlist.template sync<LMPHostType>();
+    Kokkos::deep_copy(h_scalars,d_scalars);
+
     neighbor->nimproperlist = h_nlist();
 
-    k_fail_flag.template modify<DeviceType>();
-    k_fail_flag.template sync<LMPHostType>();
     if (h_fail_flag()) {
       maximproper = neighbor->nimproperlist + BONDDELTA;
       memoryKK->grow_kokkos(k_improperlist,neighbor->improperlist,maximproper,5,"neighbor:neighbor->improperlist");
@@ -1044,7 +984,7 @@ void NeighBondKokkos<DeviceType>::improper_partial()
   } while (h_fail_flag());
 
   if (nmissing && lostbond == Thermo::ERROR)
-    error->one(FLERR,"Improper atoms missing at step {}", update->ntimestep);
+    error->one(FLERR, Error::NOLASTLINE, "Improper atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   if (neighbor->cluster_check) dihedral_check(neighbor->nimproperlist,v_improperlist);
   if (lostbond == Thermo::IGNORE) return;
@@ -1052,7 +992,7 @@ void NeighBondKokkos<DeviceType>::improper_partial()
   int all;
   MPI_Allreduce(&nmissing,&all,1,MPI_INT,MPI_SUM,world);
   if (all && (me == 0))
-    error->warning(FLERR,"Improper atoms missing at step {}", update->ntimestep);
+    error->warning(FLERR, "Improper atoms missing at step {}" + utils::errorurl(5), update->ntimestep);
 
   k_improperlist.modify<DeviceType>();
 }
@@ -1079,7 +1019,7 @@ void NeighBondKokkos<DeviceType>::operator()(TagNeighBondImproperPartial, const 
         (i <= atom1 && i <= atom2 && i <= atom3 && i <= atom4)) {
       const int nimproperlist = Kokkos::atomic_fetch_add(&d_nlist(),1);
       if (nimproperlist >= maximproper && !d_fail_flag())
-        Kokkos::atomic_fetch_add(&d_fail_flag(),1);
+        d_fail_flag() = 1;
       if (d_fail_flag()) continue;
       v_improperlist(nimproperlist,0) = atom1;
       v_improperlist(nimproperlist,1) = atom2;
@@ -1221,6 +1161,7 @@ void NeighBondKokkos<DeviceType>::update_class_variables()
     k_map_array.template sync<DeviceType>();
   } else if (map_style == Atom::MAP_HASH) {
     k_map_hash = atomKK->k_map_hash;
+    k_map_hash.template sync<DeviceType>();
   }
 }
 

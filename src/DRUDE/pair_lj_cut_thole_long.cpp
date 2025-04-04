@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -18,37 +18,37 @@
 
 #include "pair_lj_cut_thole_long.h"
 
-#include <cmath>
-#include <cstring>
-#include "fix_drude.h"
 #include "atom.h"
 #include "comm.h"
+#include "domain.h"
+#include "error.h"
+#include "fix_drude.h"
 #include "force.h"
 #include "kspace.h"
-#include "neighbor.h"
-#include "neigh_list.h"
 #include "math_const.h"
 #include "memory.h"
-#include "error.h"
-
 #include "modify.h"
-#include "domain.h"
+#include "neigh_list.h"
+#include "neighbor.h"
+
+#include <cmath>
+#include <cstring>
 
 using namespace LAMMPS_NS;
 using namespace MathConst;
 
-#define EWALD_F   1.12837917
-#define EWALD_P   9.95473818e-1
-#define B0       -0.1335096380159268
-#define B1       -2.57839507e-1
-#define B2       -1.37203639e-1
-#define B3       -8.88822059e-3
-#define B4       -5.80844129e-3
-#define B5        1.14652755e-1
+static constexpr double EWALD_F =  1.12837917;
+static constexpr double EWALD_P =  9.95473818e-1;
+static constexpr double B0      = -0.1335096380159268;
+static constexpr double B1      = -2.57839507e-1;
+static constexpr double B2      = -1.37203639e-1;
+static constexpr double B3      = -8.88822059e-3;
+static constexpr double B4      = -5.80844129e-3;
+static constexpr double B5      =  1.14652755e-1;
 
-#define EPSILON 1.0e-20
-#define EPS_EWALD 1.0e-6
-#define EPS_EWALD_SQR 1.0e-12
+static constexpr double EPSILON = 1.0e-20;
+static constexpr double EPS_EWALD = 1.0e-6;
+static constexpr double EPS_EWALD_SQR = 1.0e-12;
 
 /* ---------------------------------------------------------------------- */
 
@@ -317,7 +317,7 @@ void PairLJCutTholeLong::settings(int narg, char **arg)
 void PairLJCutTholeLong::coeff(int narg, char **arg)
 {
   if (narg < 5 || narg > 7)
-    error->all(FLERR,"Incorrect args for pair coefficients");
+    error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -348,7 +348,7 @@ void PairLJCutTholeLong::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -364,9 +364,9 @@ void PairLJCutTholeLong::init_style()
     if (strcmp(modify->fix[ifix]->style,"drude") == 0) break;
   if (ifix == modify->nfix)
       error->all(FLERR, "Pair style lj/cut/thole/long requires fix drude");
-  fix_drude = (FixDrude *) modify->fix[ifix];
+  fix_drude = dynamic_cast<FixDrude *>(modify->fix[ifix]);
 
-  neighbor->request(this,instance_me);
+  neighbor->add_request(this);
 
   cut_coulsq = cut_coul * cut_coul;
 
@@ -374,7 +374,7 @@ void PairLJCutTholeLong::init_style()
 
   cut_respa = nullptr;
 
-  // insure use of KSpace long-range solver, set g_ewald
+  // ensure use of KSpace long-range solver, set g_ewald
 
   if (force->kspace == nullptr)
     error->all(FLERR,"Pair style requires a KSpace style");

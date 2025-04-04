@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -21,12 +21,13 @@
 #include "atom.h"
 #include "comm.h"
 #include "error.h"
+#include "ewald_const.h"
 #include "force.h"
+#include "info.h"
 #include "kspace.h"
 #include "math_extra.h"
 #include "memory.h"
 #include "neigh_list.h"
-#include "neigh_request.h"
 #include "neighbor.h"
 #include "respa.h"
 #include "update.h"
@@ -36,14 +37,7 @@
 
 using namespace LAMMPS_NS;
 using namespace MathExtra;
-
-#define EWALD_F   1.12837917
-#define EWALD_P   0.3275911
-#define A1        0.254829592
-#define A2       -0.284496736
-#define A3        1.421413741
-#define A4       -1.453152027
-#define A5        1.061405429
+using namespace EwaldConst;
 
 /* ---------------------------------------------------------------------- */
 
@@ -198,7 +192,7 @@ void *PairBuckLongCoulLong::extract(const char *id, int &dim)
 void PairBuckLongCoulLong::coeff(int narg, char **arg)
 {
   if (narg < 5 || narg > 6)
-    error->all(FLERR,"Incorrect args for pair coefficients");
+    error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -224,7 +218,7 @@ void PairBuckLongCoulLong::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -250,8 +244,8 @@ void PairBuckLongCoulLong::init_style()
   // set rRESPA cutoffs
 
   if (utils::strmatch(update->integrate_style,"^respa") &&
-      ((Respa *) update->integrate)->level_inner >= 0)
-    cut_respa = ((Respa *) update->integrate)->cutoff;
+      (dynamic_cast<Respa *>(update->integrate))->level_inner >= 0)
+    cut_respa = (dynamic_cast<Respa *>(update->integrate))->cutoff;
   else cut_respa = nullptr;
 
   // setup force tables
@@ -262,21 +256,14 @@ void PairBuckLongCoulLong::init_style()
   // request regular or rRESPA neighbor lists if neighrequest_flag != 0
 
   if (force->kspace->neighrequest_flag) {
-    int irequest;
-    int respa = 0;
+    int list_style = NeighConst::REQ_DEFAULT;
 
-    if (update->whichflag == 1 && utils::strmatch(update->integrate_style,"^respa")) {
-      if (((Respa *) update->integrate)->level_inner >= 0) respa = 1;
-      if (((Respa *) update->integrate)->level_middle >= 0) respa = 2;
+    if (update->whichflag == 1 && utils::strmatch(update->integrate_style, "^respa")) {
+      auto respa = dynamic_cast<Respa *>(update->integrate);
+      if (respa->level_inner >= 0) list_style = NeighConst::REQ_RESPA_INOUT;
+      if (respa->level_middle >= 0) list_style = NeighConst::REQ_RESPA_ALL;
     }
-
-    irequest = neighbor->request(this,instance_me);
-
-    if (respa >= 1) {
-      neighbor->requests[irequest]->respaouter = 1;
-      neighbor->requests[irequest]->respainner = 1;
-    }
-    if (respa == 2) neighbor->requests[irequest]->respamiddle = 1;
+    neighbor->add_request(this, list_style);
   }
 
   cut_coulsq = cut_coul * cut_coul;
@@ -288,7 +275,9 @@ void PairBuckLongCoulLong::init_style()
 
 double PairBuckLongCoulLong::init_one(int i, int j)
 {
-  if (setflag[i][j] == 0) error->all(FLERR,"All pair coeffs are not set");
+  if (setflag[i][j] == 0)
+    error->all(FLERR, Error::NOLASTLINE,
+               "All pair coeffs are not set. Status\n" + Info::get_pair_coeff_status(lmp));
 
   if (ewald_order&(1<<6)) cut_buck[i][j] = cut_buck_global;
   else cut_buck[i][j] = cut_buck_read[i][j];

@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -44,7 +44,7 @@ class Timer : protected Pointers {
   enum tlevel { OFF = 0, LOOP, NORMAL, FULL };
 
   Timer(class LAMMPS *);
-  ~Timer(){};
+
   void init();
 
   // inline function to reduce overhead if we want no detailed timings
@@ -63,6 +63,7 @@ class Timer : protected Pointers {
   bool has_normal() const { return (_level >= NORMAL); }
   bool has_full() const { return (_level >= FULL); }
   bool has_sync() const { return (_sync != OFF); }
+  bool has_timeout() const { return (_timeout >= 0.0); }
 
   // flag if wallclock time is expired
   bool is_timeout() const { return (_timeout == 0.0); }
@@ -109,12 +110,12 @@ class Timer : protected Pointers {
   double previous_cpu;
   double previous_wall;
   double timeout_start;
-  int _level;        // level of detail: off=0,loop=1,normal=2,full=3
-  int _sync;         // if nonzero, synchronize tasks before setting the timer
-  int _timeout;      // max allowed wall time in seconds. infinity if negative
-  int _s_timeout;    // copy of timeout for restoring after a forced timeout
-  int _checkfreq;    // frequency of timeout checking
-  int _nextcheck;    // loop number of next timeout check
+  double _timeout;      // max allowed wall time in seconds. infinity if negative
+  double _s_timeout;    // copy of timeout for restoring after a forced timeout
+  int _level;           // level of detail: off=0,loop=1,normal=2,full=3
+  int _sync;            // if nonzero, synchronize tasks before setting the timer
+  int _checkfreq;       // frequency of timeout checking
+  int _nextcheck;       // loop number of next timeout check
 
   // update one specific timer array
   void _stamp(enum ttype);
@@ -126,17 +127,3 @@ class Timer : protected Pointers {
 }    // namespace LAMMPS_NS
 
 #endif
-
-/* ERROR/WARNING messages:
-
-W: Wall time limit reached
-
-UNDOCUMENTED
-
-E: Illegal ... command
-
-Self-explanatory.  Check the input script syntax and compare to the
-documentation for the command.  You can use -echo screen as a
-command-line option when running LAMMPS to see the offending line.
-
-*/

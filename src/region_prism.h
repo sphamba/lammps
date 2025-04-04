@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -26,13 +26,16 @@ namespace LAMMPS_NS {
 
 class RegPrism : public Region {
   friend class CreateBox;
+  friend class Region2VMD;
 
  public:
   RegPrism(class LAMMPS *, int, char **);
-  ~RegPrism();
-  int inside(double, double, double);
-  int surface_interior(double *, double);
-  int surface_exterior(double *, double);
+  ~RegPrism() override;
+  void init() override;
+  int inside(double, double, double) override;
+  int surface_interior(double *, double) override;
+  int surface_exterior(double *, double) override;
+  void shape_update() override;
 
  private:
   double xlo, xhi, ylo, yhi, zlo, zhi;
@@ -48,24 +51,19 @@ class RegPrism : public Region {
   void find_nearest(double *, double &, double &, double &);
   int inside_tri(double *, double *, double *, double *, double *);
   double closest(double *, double *, double *, double);
+
+  int xlostyle, xlovar, xhistyle, xhivar;
+  int ylostyle, ylovar, yhistyle, yhivar;
+  int zlostyle, zlovar, zhistyle, zhivar;
+  int xystyle, xyvar, xzstyle, xzvar, yzstyle, yzvar;
+  char *xlostr, *ylostr, *zlostr;
+  char *xhistr, *yhistr, *zhistr;
+  char *xystr, *xzstr, *yzstr;
+
+  void variable_check();
 };
 
 }    // namespace LAMMPS_NS
 
 #endif
 #endif
-
-/* ERROR/WARNING messages:
-
-E: Cannot use region INF or EDGE when box does not exist
-
-Regions that extend to the box boundaries can only be used after the
-create_box command has been used.
-
-E: Illegal ... command
-
-Self-explanatory.  Check the input script syntax and compare to the
-documentation for the command.  You can use -echo screen as a
-command-line option when running LAMMPS to see the offending line.
-
-*/

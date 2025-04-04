@@ -42,8 +42,8 @@ LAMMPS:
    If the $ is followed by text in curly brackets '{}', then the
    variable name is the text inside the curly brackets.  If no curly
    brackets follow the $, then the variable name is the single character
-   immediately following the $.  Thus ${myTemp} and $x refer to variables
-   named "myTemp" and "x", while "$xx" will be interpreted as a variable
+   immediately following the $.  Thus ``${myTemp}`` and ``$x`` refer to variables
+   named "myTemp" and "x", while ``$xx`` will be interpreted as a variable
    named "x" followed by an "x" character.
 
    How the variable is converted to a text string depends on what style
@@ -77,18 +77,19 @@ LAMMPS:
    so that you do not have to define (or discard) a temporary variable,
    "X" in this case.
 
-   Additionally, the "immediate" variable expression may be followed by
-   a colon, followed by a C-style format string, e.g. ":%f" or ":%.10g".
-   The format string must be appropriate for a double-precision
-   floating-point value.  The format string is used to output the result
-   of the variable expression evaluation.  If a format string is not
-   specified a high-precision "%.20g" is used as the default.
+   Additionally, the entire "immediate" variable expression may be
+   followed by a colon, followed by a C-style format string,
+   e.g. ``:%f`` or ``:%.10g``.  The format string must be appropriate for
+   a double-precision floating-point value.  The format string is used
+   to output the result of the variable expression evaluation.  If a
+   format string is not specified, a high-precision ``%.20g`` is used as
+   the default format.
 
    This can be useful for formatting print output to a desired precision:
 
    .. code-block:: LAMMPS
 
-      print "Final energy per atom: $(pe/atoms:%10.3f) eV/atom"
+      print "Final energy per atom: $(v_ke_per_atom+v_pe_per_atom:%10.3f) eV/atom"
 
    Note that neither the curly-bracket or immediate form of variables
    can contain nested $ characters for other variables to substitute
@@ -100,8 +101,8 @@ LAMMPS:
       variable        b2 equal 4
       print           "B2 = ${b$a}"
 
-   Nor can you specify an expression like "$($x-1.0)" for an immediate
-   variable, but you could use $(v_x-1.0), since the latter is valid
+   Nor can you specify an expression like ``$($x-1.0)`` for an immediate
+   variable, but you could use ``$(v_x-1.0)``, since the latter is valid
    syntax for an :doc:`equal-style variable <variable>`.
 
    See the :doc:`variable <variable>` command for more details of how
@@ -122,14 +123,15 @@ LAMMPS:
 .. _six:
 
 6. If you want text with spaces to be treated as a single argument, it
-   can be enclosed in either single or double or triple quotes.  A long
-   single argument enclosed in single or double quotes can span multiple
-   lines if the "&" character is used, as described above.  When the
-   lines are concatenated together (and the "&" characters and line
-   breaks removed), the text will become a single line.  If you want
-   multiple lines of an argument to retain their line breaks, the text
-   can be enclosed in triple quotes, in which case "&" characters are
-   not needed.  For example:
+   can be enclosed in either single (') or double (") or triple (""")
+   quotes.  A long single argument enclosed in single or double quotes
+   can span multiple lines if the "&" character is used, as described
+   in :ref:`1 <one>` above.  When the lines are concatenated together
+   by LAMMPS (and the "&" characters and line breaks removed), the
+   combined text will become a single line.  If you want multiple lines
+   of an argument to retain their line breaks, the text can be enclosed
+   in triple quotes, in which case "&" characters are not needed and do
+   not function as line continuation character.  For example:
 
    .. code-block:: LAMMPS
 
@@ -143,8 +145,9 @@ LAMMPS:
       System temperature = $t
       """
 
-   In each case, the single, double, or triple quotes are removed when
-   the single argument they enclose is stored internally.
+   In each of these cases, the single, double, or triple quotes are
+   removed and the enclosed text stored internally as a single
+   argument.
 
    See the :doc:`dump modify format <dump_modify>`, :doc:`print
    <print>`, :doc:`if <if>`, and :doc:`python <python>` commands for

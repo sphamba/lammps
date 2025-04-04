@@ -28,9 +28,6 @@
 #define tagint int64_t
 #endif
 #endif
-#ifdef LAMMPS_SMALLSMALL
-#define tagint int
-#endif
 #ifndef _DOUBLE_DOUBLE
 _texture( pos_tex,float4);
 #else
@@ -47,6 +44,19 @@ _texture_2d( pos_tex,int4);
 #ifdef USE_HIP
 #define LAL_USE_OLD_NEIGHBOR
 #endif
+
+/*
+  compute the id of the cell where the atoms belong to
+x: atom coordinates
+cell_id: cell ids
+particle_id:
+boxlo[0-2]: the lower left corner of the local box
+ncell[xyz]: the number of cells in xyz dims
+i_cell_size is the inverse cell size
+inum = the number of the local atoms that are ported to the device
+nall = the number of the local+ghost atoms that are ported to the device
+cells_in_cutoff = the number of cells that are within the cutoff
+*/
 
 __kernel void calc_cell_id(const numtyp4 *restrict x_,
                            unsigned *restrict cell_id,
@@ -90,6 +100,8 @@ __kernel void calc_cell_id(const numtyp4 *restrict x_,
   }
 }
 
+// compute the number of atoms in each cell
+
 __kernel void kernel_calc_cell_counts(const unsigned *restrict cell_id,
                                       int *restrict cell_counts,
                                       int nall, int ncell) {
@@ -125,14 +137,11 @@ __kernel void kernel_calc_cell_counts(const unsigned *restrict cell_id,
 #ifdef LAMMPS_BIGBIG
 #define tagint long
 #endif
-#ifdef LAMMPS_SMALLSMALL
-#define tagint int
-#endif
 #endif
 
 __kernel void transpose(__global tagint *restrict out,
                         const __global tagint *restrict in,
-                        int columns_in, int rows_in)
+                        int columns_in, int rows_in, int shift)
 {
   __local tagint block[BLOCK_CELL_2D][BLOCK_CELL_2D+1];
 
@@ -143,15 +152,15 @@ __kernel void transpose(__global tagint *restrict out,
 
   unsigned i=bi*BLOCK_CELL_2D+ti;
   unsigned j=bj*BLOCK_CELL_2D+tj;
-  if ((i<columns_in) && (j<rows_in))
-    block[tj][ti]=in[j*columns_in+i];
+  if ((i<columns_in) && (j+shift<rows_in))
+    block[tj][ti]=in[(j+shift)*columns_in+i];
 
    __syncthreads();
 
   i=bj*BLOCK_CELL_2D+ti;
   j=bi*BLOCK_CELL_2D+tj;
-  if ((i<rows_in) && (j<columns_in))
-    out[j*rows_in+i] = block[ti][tj];
+  if ((i+shift<rows_in) && (j<columns_in))
+    out[j*rows_in+i+shift] = block[ti][tj];
 }
 
 #ifndef LAL_USE_OLD_NEIGHBOR
@@ -474,6 +483,10 @@ __kernel void calc_neigh_list_cell(const __global numtyp4 *restrict x_,
 
 #endif
 
+#define SPECIAL_DATA_PRELOAD_SIZE 3
+#define UNROLL_FACTOR_LIST 4
+#define UNROLL_FACTOR_SPECIAL 2
+
 __kernel void kernel_special(__global int *dev_nbor,
                              __global int *host_nbor_list,
                              const __global int *host_numj,
@@ -488,46 +501,95 @@ __kernel void kernel_special(__global int *dev_nbor,
 
   if (ii<nt) {
     int stride;
-    __global int *list, *list_end;
+    __global int *list;
 
     int n1=nspecial[ii*3];
     int n2=nspecial[ii*3+1];
     int n3=nspecial[ii*3+2];
 
-    int numj;
+    int myj;
     if (ii < inum) {
       stride=inum;
       list=dev_nbor+stride+ii;
-      numj=*list;
+      int numj=*list;
       list+=stride+fast_mul(ii,t_per_atom-1);
       stride=fast_mul(inum,t_per_atom);
-      int njt=numj/t_per_atom;
-      list_end=list+fast_mul(njt,stride)+(numj & (t_per_atom-1));
+      myj=numj/t_per_atom;
+      if (offset < (numj & (t_per_atom-1)))
+        myj++;
       list+=offset;
     } else {
       stride=1;
       list=host_nbor_list+(ii-inum)*max_nbors;
-      numj=host_numj[ii-inum];
-      list_end=list+fast_mul(numj,stride);
+      myj=host_numj[ii-inum];
     }
 
-    for ( ; list<list_end; list+=stride) {
-      int nbor=*list;
-      tagint jtag=tag[nbor];
+#if SPECIAL_DATA_PRELOAD_SIZE > 0
+    tagint special_preload[SPECIAL_DATA_PRELOAD_SIZE];
+    for (int i = 0, j = 0; (i < n3) && (j < SPECIAL_DATA_PRELOAD_SIZE); i+=UNROLL_FACTOR_SPECIAL, j++) {
+      special_preload[j] = special[ii + i*nt];
+    }
+#endif
 
-      int offset=ii;
-      for (int i=0; i<n3; i++) {
-        if (special[offset]==jtag) {
-          int which = 1;
-          if (i>=n1)
-            which++;
-          if (i>=n2)
-            which++;
-          nbor=nbor ^ (which << SBBITS);
-          *list=nbor;
-        }
-        offset+=nt;
+    for (int m=0; m<myj; m+=UNROLL_FACTOR_LIST) {
+      int nbor[UNROLL_FACTOR_LIST];
+      tagint jtag[UNROLL_FACTOR_LIST];
+      __global int* list_addr[UNROLL_FACTOR_LIST];
+      int lmax = myj - m;
+      for (int l=0; l<UNROLL_FACTOR_LIST; l++) {
+        list_addr[l] = list + l*stride;
+        if (l < lmax)
+          nbor[l] = *list_addr[l];
       }
+      for (int l=0; l<UNROLL_FACTOR_LIST; l++) {
+        if (l < lmax)
+          jtag[l] = tag[nbor[l]];
+      }
+
+      for (int i=0, j=0; i<n3; i+=UNROLL_FACTOR_SPECIAL, j++) {
+        tagint special_data[UNROLL_FACTOR_SPECIAL];
+        int which[UNROLL_FACTOR_SPECIAL];
+
+        for (int c = 0; c < UNROLL_FACTOR_SPECIAL; c++) {
+          which[c] = 1;
+          if (i + c < n3)
+          {
+#if SPECIAL_DATA_PRELOAD_SIZE > 0
+            if ((c == 0) && (j < SPECIAL_DATA_PRELOAD_SIZE)) {
+              special_data[c] = special_preload[j];
+            }
+            else
+#endif
+              special_data[c] = special[ii + (i+c)*nt];
+          }
+        }
+
+        for (int k=0; k<UNROLL_FACTOR_SPECIAL; k++) {
+          if (i+k >= n1) {
+            which[k]++;
+          }
+        }
+        for (int k=0; k<UNROLL_FACTOR_SPECIAL; k++) {
+          if (i+k >= n2) {
+            which[k]++;
+          }
+          which[k] <<= SBBITS;
+        }
+        for (int c = 0; c < UNROLL_FACTOR_SPECIAL; c++) {
+          if (i + c < n3) {
+            for (int l=0; l<UNROLL_FACTOR_LIST; l++) {
+              if (l < lmax && special_data[c] == jtag[l]) {
+                nbor[l]=nbor[l] ^ which[c];
+              }
+            }
+          }
+        }
+      }
+      for (int l=0; l<UNROLL_FACTOR_LIST; l++) {
+        if (l < lmax)
+          *list_addr[l] = nbor[l];
+      }
+      list+=UNROLL_FACTOR_LIST * stride;
     }
   } // if ii
 }

@@ -2,7 +2,7 @@ Build the LAMMPS documentation
 ==============================
 
 Depending on how you obtained LAMMPS and whether you have built the
-manual yourself, this directory has a number of sub-directories and
+manual yourself, this directory has a number of subdirectories and
 files. Here is a list with descriptions:
 
 .. code-block:: bash
@@ -33,7 +33,7 @@ various tools and files.  Some of them have to be installed (see below).  For
 the rest the build process will attempt to download and install them into
 a python virtual environment and local folders.
 
-A current version of the manual (latest patch release, that is the state
+A current version of the manual (latest feature release, that is the state
 of the *release* branch) is is available online at:
 `https://docs.lammps.org/ <https://docs.lammps.org/>`_.
 A version of the manual corresponding to the ongoing development (that is
@@ -48,18 +48,15 @@ Build using GNU make
 
 The LAMMPS manual is written in `reStructuredText <rst_>`_ format which
 can be translated to different output format using the `Sphinx
-<sphinx_>`_ document generator tool.  It also incorporates programmer
-documentation extracted from the LAMMPS C++ sources through the `Doxygen
-<https://doxygen.nl>`_ program.  Currently the translation to HTML, PDF
-(via LaTeX), ePUB (for many e-book readers) and MOBI (for Amazon Kindle
-readers) are supported.  For that to work a Python 3 interpreter, the
-``doxygen`` tools and internet access to download additional files and
-tools are required.  This download is usually only required once or
-after the documentation folder is returned to a pristine state with
-``make clean-all``.
-
-.. _rst: https://docutils.readthedocs.io/en/sphinx-docs/user/rst/quickstart.html
-.. _sphinx: https://www.sphinx-doc.org
+<https://www.sphinx-doc.org/>`_ document generator tool.  It also
+incorporates programmer documentation extracted from the LAMMPS C++
+sources through the `Doxygen <https://doxygen.nl/>`_ program.  Currently
+the translation to HTML, PDF (via LaTeX), ePUB (for many e-book readers)
+and MOBI (for Amazon Kindle readers) are supported.  For that to work a
+Python interpreter version 3.8 or later, the ``doxygen`` tools and
+internet access to download additional files and tools are required.
+This download is usually only required once or after the documentation
+folder is returned to a pristine state with ``make clean-all``.
 
 For the documentation build a python virtual environment is set up in
 the folder ``doc/docenv`` and various python packages are installed into
@@ -78,10 +75,10 @@ folder.  The following ``make`` commands are available:
 
    make html          # generate HTML in html dir using Sphinx
    make pdf           # generate PDF  as Manual.pdf using Sphinx and PDFLaTeX
-   make fetch         # fetch HTML pages and PDF files from LAMMPS website
-                      #  and unpack into the html_www folder and Manual_www.pdf
    make epub          # generate LAMMPS.epub in ePUB format using Sphinx
    make mobi          # generate LAMMPS.mobi in MOBI format using ebook-convert
+
+   make fasthtml      # generate approximate HTML in fasthtml dir using pandoc
 
    make clean         # remove intermediate RST files created by HTML build
    make clean-all     # remove entire build folder and any cached data
@@ -89,6 +86,7 @@ folder.  The following ``make`` commands are available:
    make anchor_check  # check for duplicate anchor labels
    make style_check   # check for complete and consistent style lists
    make package_check # check for complete and consistent package lists
+   make link_check    # check for broken or outdated URLs
    make spelling      # spell-check the manual
 
 ----------
@@ -117,9 +115,9 @@ environment variable.
 Prerequisites for HTML
 ----------------------
 
-To run the HTML documentation build toolchain, python 3, git, doxygen,
-and virtualenv have to be installed locally.  Here are instructions for
-common setups:
+To run the HTML documentation build toolchain, Python 3.8 or later, git,
+doxygen, and virtualenv have to be installed locally.  Here are
+instructions for common setups:
 
 .. tabs::
 
@@ -127,44 +125,58 @@ common setups:
 
       .. code-block:: bash
 
-         sudo apt-get install python-virtualenv git doxygen
+         sudo apt-get install git doxygen
 
-   .. tab:: RHEL or CentOS (Version 7.x)
-
-      .. code-block:: bash
-
-         sudo yum install python3-virtualenv git doxygen
-
-   .. tab:: Fedora or RHEL/CentOS (8.x or later)
+   .. tab:: Fedora or RHEL/AlmaLinux/RockyLinux (8.x or later)
 
       .. code-block:: bash
 
-         sudo dnf install python3-virtualenv git doxygen
+         sudo dnf install git doxygen
 
-   .. tab:: MacOS X
+   .. tab:: macOS
 
       *Python 3*
 
-      Download the latest Python 3 MacOS X package from
+      If Python 3 is not available on your macOS system, you can
+      download the latest Python 3 macOS package from
       `https://www.python.org <https://www.python.org>`_ and install it.
       This will install both Python 3 and pip3.
-
-      *virtualenv*
-
-      Once Python 3 is installed, open a Terminal and type
-
-      .. code-block:: bash
-
-         pip3 install virtualenv
-
-      This will install virtualenv from the Python Package Index.
 
 Prerequisites for PDF
 ---------------------
 
 In addition to the tools needed for building the HTML format manual,
 a working LaTeX installation with support for PDFLaTeX and a selection
-of LaTeX styles/packages are required.  To run the PDFLaTeX translation
+of LaTeX styles/packages are required.  Apart from LaTeX packages that
+are usually installed by default, the following packages are required:
+
+.. table_from_list::
+   :columns: 11
+
+   - amsmath
+   - anysize
+   - babel
+   - capt-of
+   - cmap
+   - dvipng
+   - ellipse
+   - fncychap
+   - fontawesome
+   - framed
+   - geometry
+   - gyre
+   - hyperref
+   - hypcap
+   - needspace
+   - pict2e
+   - times
+   - tabulary
+   - titlesec
+   - upquote
+   - wrapfig
+   - xindy
+
+To run the PDFLaTeX translation
 the ``latexmk`` script needs to be installed as well.
 
 Prerequisites for ePUB and MOBI
@@ -178,7 +190,7 @@ math expressions transparently into embedded images.
 For converting the generated ePUB file to a MOBI format file (for e-book
 readers, like Kindle, that cannot read ePUB), you also need to have the
 ``ebook-convert`` tool from the "calibre" software
-installed. `http://calibre-ebook.com/ <http://calibre-ebook.com/>`_
+installed. `https://calibre-ebook.com/ <https://calibre-ebook.com/>`_
 Typing ``make mobi`` will first create the ePUB file and then convert
 it.  On the Kindle readers in particular, you also have support for PDF
 files, so you could download and view the PDF version as an alternative.
@@ -192,9 +204,44 @@ documentation is required and either existing files in the ``src``
 folder need to be updated or new files added. These files are written in
 `reStructuredText <rst_>`_ markup for translation with the Sphinx tool.
 
+Testing your contribution
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
 Before contributing any documentation, please check that both the HTML
-and the PDF format documentation can translate without errors. Please also
-check the output to the console for any warnings or problems.  There will
+and the PDF format documentation can translate without errors and that
+there are no spelling issues.  This is done with ``make html``, ``make pdf``,
+and ``make spelling``, respectively.
+
+Fast and approximate translation to HTML
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Translating the full manual to HTML or PDF can take a long time.  Thus
+there is a fast and approximate way to translate the reStructuredText to
+HTML as a quick-n-dirty way of checking your manual page.
+
+This translation uses `Pandoc <https://pandoc.org>`_ instead of Sphinx
+and thus all special Sphinx features (cross-references, advanced tables,
+embedding of Python docstrings or doxygen documentation, and so on) will
+not render correctly.  Most embedded math should render correctly.  This
+is a **very fast** way to check the syntax and layout of a documentation
+file translated to HTML while writing or updating it.
+
+To translate **all** manual pages, you can type ``make fasthtml`` at the
+command line.  The translated HTML files are then in the ``fasthtml``
+folder. All subsequent ``make fasthtml`` commands will only translate
+``.rst`` files that have been changed.  The ``make fasthtml`` command
+can be parallelized with make using the `-j` flag.  You can also
+directly translate only individual pages: e.g. to translate only the
+``doc/src/pair_lj.rst`` page type ``make fasthtml/pair_lj.html``
+
+After writing the documentation is completed, you will still need
+to verify with ``make html`` and ``make pdf`` that it translates
+correctly in both formats.
+
+Tests for consistency, completeness, and other known issues
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Please also check the output to the console for any warnings or problems.  There will
 be multiple tests run automatically:
 
 - A test for correctness of all anchor labels and their references
@@ -213,9 +260,20 @@ be multiple tests run automatically:
 - A test that only standard, printable ASCII text characters are used.
   This runs the command ``env LC_ALL=C grep -n '[^ -~]' src/*.rst`` and
   thus prints all offending lines with filename and line number
-  prepended to the screen.  Special characters like the Angstrom
-  :math:`\mathrm{\mathring{A}}` should be typeset with embedded math
-  (like this ``:math:`\mathrm{\mathring{A}}```\ ).
+  prepended to the screen.  Special characters like Greek letters
+  (:math:`\alpha~~\sigma~~\epsilon`), super- or subscripts
+  (:math:`x^2~~\mathrm{U}_{LJ}`), mathematical expressions
+  (:math:`\frac{1}{2}\mathrm{N}~~x\to\infty`), or the Angstrom symbol
+  (:math:`\AA`) should be typeset with embedded LaTeX (like this
+  ``:math:`\alpha \sigma \epsilon```, ``:math:`x^2 \mathrm{E}_{LJ}```,
+  ``:math:`\frac{1}{2}\mathrm{N} x\to\infty```, or ``:math:`\AA```\ ).
+
+- Embedded LaTeX is rendered in HTML output with `MathJax
+  <https://www.mathjax.org/>`_ and in PDF output by passing the embedded
+  text to LaTeX.  Some care has to be taken, though, since there are
+  limitations which macros and features can be used in either mode, so
+  it is recommended to always check whether any new or changed
+  documentation does translate and render correctly with either output.
 
 - A test whether all styles are documented and listed in their
   respective overview pages.  A typical output with warnings looks like this:
@@ -246,6 +304,5 @@ manual with ``make spelling``.  This requires `a library called enchant
 positives* (e.g. keywords, names, abbreviations) those can be added to
 the file ``lammps/doc/utils/sphinx-config/false_positives.txt``.
 
-.. _rst: https://docutils.readthedocs.io/en/sphinx-docs/user/rst/quickstart.html
-
 .. _lws: https://www.lammps.org
+.. _rst: https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html

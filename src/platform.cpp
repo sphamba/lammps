@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -16,12 +16,14 @@
  * the "utils" namespace with convenience and utility functions. */
 
 #include "platform.h"
+
+#include "fmt/format.h"
 #include "text_file_reader.h"
 #include "utils.h"
 
-#if HAVE_MPI
+#include <deque>
+#include <exception>
 #include <mpi.h>
-#endif
 
 ////////////////////////////////////////////////////////////////////////
 // include system headers and tweak system settings
@@ -50,7 +52,6 @@
 #include <dlfcn.h>
 #include <sys/resource.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <unistd.h>
@@ -60,6 +61,13 @@
 #include <fcntl.h>
 #include <sys/syslimits.h>
 #endif
+
+// for disk_free()
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || \
+    defined(__OpenBSD__) || defined(__NetBSD__)
+#include <sys/statvfs.h>
+#endif
+
 ////////////////////////////////////////////////////////////////////////
 
 #include <chrono>
@@ -72,11 +80,11 @@
 struct compress_info {
   /// identifier for the different compression algorithms
   enum styles { NONE, GZIP, BZIP2, ZSTD, XZ, LZMA, LZ4 };
-  const std::string extension;     ///< filename extension for the current algorithm
-  const std::string command;       ///< command to perform compression or decompression
+  const std::string extension;          ///< filename extension for the current algorithm
+  const std::string command;            ///< command to perform compression or decompression
   const std::string compressflags;      ///< flags to append to compress from stdin to stdout
   const std::string uncompressflags;    ///< flags to decompress file to stdout
-  const int style;                 ///< compression style flag
+  const int style;                      ///< compression style flag
 };
 
 // clang-format off
@@ -152,7 +160,8 @@ double platform::cputime()
 
   return rv;
 }
-#if defined(_MSC_VER)
+#if defined(__clang__)
+#elif defined(_MSC_VER)
 #pragma optimize("", on)
 #endif
 
@@ -186,13 +195,64 @@ std::string platform::os_info()
   char value[1024];
   DWORD value_length = 1024;
   const char *subkey = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
-  const char *entry = "ProductName";
+  const char *entry = "CurrentBuild";
   RegGetValue(HKEY_LOCAL_MACHINE, subkey, entry, RRF_RT_REG_SZ, nullptr, &value,
               (LPDWORD) &value_length);
   // enforce zero termination
   value[1023] = '\0';
-  buf = value;
+  auto build = std::string(value);
 
+  if (build == "6002") {
+    buf = "Windows Vista";
+  } else if (build == "6003") {
+    buf = "Windows Server 2008";
+  } else if (build == "7601") {
+    buf = "Windows 7";
+  } else if (build == "9200") {
+    buf = "Windows 8";
+  } else if (build == "9600") {
+    buf = "Windows 8.1";
+  } else if (build == "10240") {
+    buf = "Windows 10 1507";
+  } else if (build == "10586") {
+    buf = "Windows 10 1511";
+  } else if (build == "14393") {
+    buf = "Windows 10 1607";
+  } else if (build == "15063") {
+    buf = "Windows 10 1703";
+  } else if (build == "16299") {
+    buf = "Windows 10 1709";
+  } else if (build == "17134") {
+    buf = "Windows 10 1803";
+  } else if (build == "17763") {
+    buf = "Windows 10 1809";
+  } else if (build == "18362") {
+    buf = "Windows 10 1903";
+  } else if (build == "18363") {
+    buf = "Windows 10 1909";
+  } else if (build == "19041") {
+    buf = "Windows 10 2004";
+  } else if (build == "19042") {
+    buf = "Windows 10 20H2";
+  } else if (build == "19043") {
+    buf = "Windows 10 21H1";
+  } else if (build == "19044") {
+    buf = "Windows 10 21H2";
+  } else if (build == "19045") {
+    buf = "Windows 10 22H2";
+  } else if (build == "20348") {
+    buf = "Windows Server 2022";
+  } else if (build == "22000") {
+    buf = "Windows 11 21H2";
+  } else if (build == "22621") {
+    buf = "Windows 11 22H2";
+  } else if (build == "22631") {
+    buf = "Windows 11 23H2";
+  } else if (build == "26100") {
+    buf = "Windows 11 24H2";
+  } else {
+    buf = "Windows Build " + build;
+  }
   DWORD fullversion, majorv, minorv, buildv = 0;
   fullversion = GetVersion();
   majorv = (DWORD) (LOBYTE(LOWORD(fullversion)));
@@ -230,16 +290,16 @@ std::string platform::os_info()
 
   if (platform::file_is_readable("/etc/os-release")) {
     try {
-        TextFileReader reader("/etc/os-release","");
-        while (1) {
-          auto words = reader.next_values(0,"=");
-          if ((words.count() > 1) && (words.next_string() == "PRETTY_NAME")) {
-            buf += " " + utils::trim(words.next_string());
-            break;
-          }
+      TextFileReader reader("/etc/os-release", "");
+      while (true) {
+        auto words = reader.next_values(0, "=");
+        if ((words.count() > 1) && (words.next_string() == "PRETTY_NAME")) {
+          buf += " " + utils::trim(words.next_string());
+          break;
         }
+      }
     } catch (std::exception &e) {
-      ; // EOF but keyword not found
+      ;    // EOF but keyword not found
     }
   }
 
@@ -254,8 +314,10 @@ std::string platform::os_info()
 
 std::string platform::cxx_standard()
 {
-#if __cplusplus > 202002L
-  return "newer than C++20";
+#if __cplusplus > 202302L
+  return "newer than C++23";
+#elif __cplusplus == 202302L
+  return "C++23";
 #elif __cplusplus == 202002L
   return "C++20";
 #elif __cplusplus == 201703L
@@ -303,11 +365,18 @@ std::string platform::compiler_info()
                     __MINGW32_MINOR_VERSION, __VERSION__);
 #elif defined(__GNUC__)
   buf = fmt::format("GNU C++ {}", __VERSION__);
-#elif defined(_MSC_VER) && (_MSC_VER > 1920) && (_MSC_VER < 2000)
+#elif defined(_MSC_VER) && (_MSC_VER >= 1920) && (_MSC_VER < 1930)
   constexpr int major = _MSC_VER / 100;
   constexpr int minor = _MSC_VER - major * 100;
-  buf = "Microsoft Visual Studio 20" + std::to_string(major) + ", C/C++ " +
-      std::to_string(major - 5) + "." + std::to_string(minor);
+  constexpr int patch = minor - 20;
+  buf = fmt::format("Microsoft Visual Studio 2019 Version 16.{}, C/C++ {}.{}", patch, major - 5,
+                    minor);
+#elif defined(_MSC_VER) && (_MSC_VER >= 1930) && (_MSC_VER < 2000)
+  constexpr int major = _MSC_VER / 100;
+  constexpr int minor = _MSC_VER - major * 100;
+  constexpr int patch = minor - 30;
+  buf = fmt::format("Microsoft Visual Studio 2022 Version 17.{}, C/C++ {}.{}", patch, major - 5,
+                    minor);
 #else
   buf = "(Unknown)";
 #endif
@@ -328,8 +397,16 @@ std::string platform::openmp_standard()
   // Supported OpenMP version corresponds to the release date of the
   // specifications as posted at https://www.openmp.org/specifications/
 
-#if _OPENMP > 202011
-  return "OpenMP newer than version 5.1";
+#if _OPENMP > 202411
+  return "OpenMP newer than version 6.0";
+#elif _OPENMP == 202411
+  return "OpenMP 6.0";
+#elif _OPENMP == 202311
+  return "OpenMP 6.0 preview 2";
+#elif _OPENMP == 202211
+  return "OpenMP 6.0 preview 1";
+#elif _OPENMP == 202111
+  return "OpenMP 5.2";
 #elif _OPENMP == 202011
   return "OpenMP 5.1";
 #elif _OPENMP == 201811
@@ -395,8 +472,8 @@ std::string platform::mpi_vendor()
 
 std::string platform::mpi_info(int &major, int &minor)
 {
-  int len = 0;
 #if (defined(MPI_VERSION) && (MPI_VERSION > 2)) || defined(MPI_STUBS)
+  int len = 0;
   static char version[MPI_MAX_LIBRARY_VERSION_STRING];
   MPI_Get_library_version(version, &len);
   if (len > 80) {
@@ -419,6 +496,24 @@ std::string platform::mpi_info(int &major, int &minor)
 }
 
 /* ----------------------------------------------------------------------
+   collect available compression tool info
+------------------------------------------------------------------------- */
+
+std::string platform::compress_info()
+{
+  std::string buf = "Available compression formats:\n\n";
+  bool none_found = true;
+  for (const auto &cmpi : compress_styles) {
+    if (cmpi.style == ::compress_info::NONE) continue;
+    if (find_exe_path(cmpi.command).size()) {
+      none_found = false;
+      buf += fmt::format("Extension: .{:6} Command: {}\n", cmpi.extension, cmpi.command);
+    }
+  }
+  if (none_found) buf += "None\n";
+  return buf;
+}
+/* ----------------------------------------------------------------------
    set environment variable
 ------------------------------------------------------------------------- */
 
@@ -428,11 +523,11 @@ int platform::putenv(const std::string &vardef)
 
   auto found = vardef.find_first_of('=');
 #ifdef _WIN32
-  // must assign a value to variable with _putenv()
+  // must assign a value to variable with _putenv_s()
   if (found == std::string::npos)
-    return _putenv(utils::strdup(vardef + "=1"));
+    return _putenv_s(vardef.c_str(), "1");
   else
-    return _putenv(utils::strdup(vardef));
+    return _putenv_s(vardef.substr(0, found).c_str(), vardef.substr(found + 1).c_str());
 #else
   if (found == std::string::npos)
     return setenv(vardef.c_str(), "", 1);
@@ -440,6 +535,24 @@ int platform::putenv(const std::string &vardef)
     return setenv(vardef.substr(0, found).c_str(), vardef.substr(found + 1).c_str(), 1);
 #endif
   return -1;
+}
+
+/* ----------------------------------------------------------------------
+   unset environment variable
+------------------------------------------------------------------------- */
+
+int platform::unsetenv(const std::string &variable)
+{
+  if (variable.size() == 0) return -1;
+#ifdef _WIN32
+  // emulate POSIX semantics by returning -1 on trying to unset non-existing variable
+  const char *ptr = getenv(variable.c_str());
+  if (!ptr) return -1;
+  // empty _putenv_s() definition deletes variable
+  return _putenv_s(variable.c_str(), "");
+#else
+  return ::unsetenv(variable.c_str());
+#endif
 }
 
 /* ----------------------------------------------------------------------
@@ -543,8 +656,10 @@ void *platform::dlopen(const std::string &fname)
 std::string platform::dlerror()
 {
   const char *errmesg = ::dlerror();
-  if (errmesg) return {errmesg};
-  else return {""};
+  if (errmesg)
+    return {errmesg};
+  else
+    return {""};
 }
 
 // close a shared object
@@ -635,14 +750,14 @@ bool platform::is_console(FILE *fp)
 
 std::string platform::current_directory()
 {
-  std::string cwd = "";
+  std::string cwd;
 
 #if defined(_WIN32)
   char *buf = new char[MAX_PATH];
   if (_getcwd(buf, MAX_PATH)) { cwd = buf; }
   delete[] buf;
 #else
-  char *buf = new char[PATH_MAX];
+  auto buf = new char[PATH_MAX];
   if (::getcwd(buf, PATH_MAX)) { cwd = buf; }
   delete[] buf;
 #endif
@@ -717,16 +832,31 @@ int platform::chdir(const std::string &path)
 }
 
 /* ----------------------------------------------------------------------
-   Create a directory
+   Create a directory. Create entire path if necessary.
 ------------------------------------------------------------------------- */
 
 int platform::mkdir(const std::string &path)
 {
+  std::deque<std::string> dirlist = {path};
+  std::string dirname = path_dirname(path);
+
+  while ((dirname != ".") && (dirname != "")) {
+    dirlist.push_front(dirname);
+    dirname = path_dirname(dirname);
+  }
+
+  int rv;
+  for (const auto &dir : dirlist) {
+    if (!path_is_directory(dir)) {
 #if defined(_WIN32)
-  return ::_mkdir(path.c_str());
+      rv = ::_mkdir(dir.c_str());
 #else
-  return ::mkdir(path.c_str(), S_IRWXU | S_IRGRP | S_IXGRP);
+      rv = ::mkdir(dir.c_str(), S_IRWXU | S_IRGRP | S_IXGRP);
 #endif
+      if (rv != 0) return rv;
+    }
+  }
+  return 0;
 }
 
 /* ----------------------------------------------------------------------
@@ -814,7 +944,7 @@ int platform::ftruncate(FILE *fp, bigint length)
     return 1;
   }
 #else
-  platform::fseek(fp, length);
+  (void) platform::fseek(fp, length);
   return ::ftruncate(fileno(fp), (off_t) length);
 #endif
 }
@@ -925,12 +1055,68 @@ bool platform::file_is_readable(const std::string &path)
 }
 
 /* ----------------------------------------------------------------------
+   try to open file for writing to prove if it can be written to
+------------------------------------------------------------------------- */
+
+bool platform::file_is_writable(const std::string &path)
+{
+  // if the file exists, try to append and don't delete
+
+  if (file_is_readable(path)) {
+    FILE *fp = fopen(path.c_str(), "a");
+    if (fp) {
+      fclose(fp);
+      return true;
+    }
+  } else {
+    FILE *fp = fopen(path.c_str(), "w");
+    if (fp) {
+      fclose(fp);
+      unlink(path);
+      return true;
+    }
+  }
+  return false;
+}
+
+/* ----------------------------------------------------------------------
+   determine available disk space, if supported. Return -1 if not.
+------------------------------------------------------------------------- */
+
+double platform::disk_free(const std::string &path)
+{
+  double bytes_free = -1.0;
+
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || \
+    defined(__OpenBSD__) || defined(__NetBSD__)
+  struct statvfs fs;
+
+  if (path.size()) {
+    int rv = statvfs(path.c_str(), &fs);
+    if (rv == 0) {
+#if defined(__linux__)
+      bytes_free = fs.f_bavail * fs.f_bsize;
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__DragonFly__) || \
+    defined(__OpenBSD__) || defined(__NetBSD__)
+      bytes_free = fs.f_bavail * fs.f_frsize;
+#endif
+    }
+  }
+#elif defined(_WIN32)
+  uint64_t is_free = 0;
+  if (GetDiskFreeSpaceEx(path.c_str(), (PULARGE_INTEGER) &is_free, nullptr, nullptr))
+    bytes_free = is_free;
+#endif
+  return bytes_free;
+}
+
+/* ----------------------------------------------------------------------
    check if filename has a known compression extension
 ------------------------------------------------------------------------- */
 
 bool platform::has_compress_extension(const std::string &file)
 {
-  return find_compress_type(file).style != compress_info::NONE;
+  return find_compress_type(file).style != ::compress_info::NONE;
 }
 
 /* ----------------------------------------------------------------------
@@ -942,8 +1128,8 @@ FILE *platform::compressed_read(const std::string &file)
   FILE *fp = nullptr;
 
 #if defined(LAMMPS_GZIP)
-  auto compress = find_compress_type(file);
-  if (compress.style == compress_info::NONE) return nullptr;
+  const auto &compress = find_compress_type(file);
+  if (compress.style == ::compress_info::NONE) return nullptr;
 
   if (find_exe_path(compress.command).size())
     // put quotes around file name so that they may contain blanks
@@ -961,8 +1147,9 @@ FILE *platform::compressed_write(const std::string &file)
   FILE *fp = nullptr;
 
 #if defined(LAMMPS_GZIP)
-  auto compress = find_compress_type(file);
-  if (compress.style == compress_info::NONE) return nullptr;
+  const auto &compress = find_compress_type(file);
+  if (compress.style == ::compress_info::NONE) return nullptr;
+  if (!file_is_writable(file)) return nullptr;
 
   if (find_exe_path(compress.command).size())
     // put quotes around file name so that they may contain blanks

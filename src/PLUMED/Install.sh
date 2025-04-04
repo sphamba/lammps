@@ -7,6 +7,19 @@ mode=$1
 LC_ALL=C
 export LC_ALL
 
+cat <<EOF
+WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING
+WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING
+
+  Support for building the PLUMED package with the legacy build system using GNU
+  make will be removed in Summer 2025.  Please switch to using CMake to build
+  LAMMPS as soon as possible and report any problems to developers@lammps.org
+  or post a bug report issue at https://github.com/lammps/lammps/issues
+
+WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING
+WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING
+EOF
+
 # arg1 = file, arg2 = file it depends on
 
 action () {
@@ -45,7 +58,7 @@ if (test $1 = 1) then
   fi
 
   if (test -e ../Makefile.package.settings) then
-    sed -i -e '/^include.*plumed.*$/d' ../Makefile.package.settings
+    sed -i -e '/^[ \t]*include.*plumed.*$/d' ../Makefile.package.settings
     # multiline form needed for BSD sed on Macs
     sed -i -e '4 i \
 include ..\/..\/lib\/plumed\/Makefile.lammps
@@ -59,7 +72,7 @@ elif (test $1 = 0) then
   fi
 
   if (test -e ../Makefile.package.settings) then
-    sed -i -e '/^include.*plumed.*$/d' ../Makefile.package.settings
+    sed -i -e '/^[ \t]*include.*plumed.*$/d' ../Makefile.package.settings
   fi
 
 fi

@@ -1,46 +1,18 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 3.0
-//       Copyright (2020) National Technology & Engineering
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
 //               Solutions of Sandia, LLC (NTESS).
 //
 // Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NTESS OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
 
 #ifndef KOKKOS_EXP_ITERATE_TILE_GPU_HPP
 #define KOKKOS_EXP_ITERATE_TILE_GPU_HPP
@@ -66,16 +38,26 @@ struct EmulateCUDADim3 {
 };
 #endif
 
+#if defined(KOKKOS_ENABLE_CUDA)
+// see:
+// https://docs.nvidia.com/cuda/cuda-c-programming-guide/#features-and-technical-specifications-technical-specifications-per-compute-capability
+constexpr int mdrange_max_blocks_x = 2147483647;  // 2^31 - 1
+constexpr int mdrange_max_blocks   = 65535;       // 2^16 - 1
+#else
+constexpr int mdrange_max_blocks_x = 65535;  // 2^16 - 1
+constexpr int mdrange_max_blocks   = 65535;  // 2^16 - 1
+#endif
+
 template <class Tag, class Functor, class... Args>
-KOKKOS_IMPL_FORCEINLINE_FUNCTION std::enable_if_t<std::is_void<Tag>::value>
+KOKKOS_IMPL_FORCEINLINE_FUNCTION std::enable_if_t<std::is_void_v<Tag>>
 _tag_invoke(Functor const& f, Args&&... args) {
-  f((Args &&) args...);
+  f((Args&&)args...);
 }
 
 template <class Tag, class Functor, class... Args>
-KOKKOS_IMPL_FORCEINLINE_FUNCTION std::enable_if_t<!std::is_void<Tag>::value>
+KOKKOS_IMPL_FORCEINLINE_FUNCTION std::enable_if_t<!std::is_void_v<Tag>>
 _tag_invoke(Functor const& f, Args&&... args) {
-  f(Tag{}, (Args &&) args...);
+  f(Tag{}, (Args&&)args...);
 }
 
 template <class Tag, class Functor, class T, size_t N, size_t... Idxs,
@@ -83,7 +65,7 @@ template <class Tag, class Functor, class T, size_t N, size_t... Idxs,
 KOKKOS_IMPL_FORCEINLINE_FUNCTION void _tag_invoke_array_helper(
     Functor const& f, T (&vals)[N], std::integer_sequence<size_t, Idxs...>,
     Args&&... args) {
-  _tag_invoke<Tag>(f, vals[Idxs]..., (Args &&) args...);
+  _tag_invoke<Tag>(f, vals[Idxs]..., (Args&&)args...);
 }
 
 template <class Tag, class Functor, class T, size_t N, class... Args>
@@ -91,7 +73,7 @@ KOKKOS_IMPL_FORCEINLINE_FUNCTION void _tag_invoke_array(Functor const& f,
                                                         T (&vals)[N],
                                                         Args&&... args) {
   _tag_invoke_array_helper<Tag>(f, vals, std::make_index_sequence<N>{},
-                                (Args &&) args...);
+                                (Args&&)args...);
 }
 
 // ------------------------------------------------------------------ //
@@ -117,12 +99,13 @@ struct DeviceIterateTile<2, PolicyType, Functor, Tag> {
         threadIdx(threadIdx_) {}
 #else
   KOKKOS_IMPL_DEVICE_FUNCTION DeviceIterateTile(const PolicyType& policy_,
-                                                const Functor& f_)
+                                                  const Functor& f_)
       : m_policy(policy_), m_func(f_) {}
 #endif
 
   KOKKOS_IMPL_DEVICE_FUNCTION
   void exec_range() const {
+    // LL
     if (PolicyType::inner_direction == Iterate::Left) {
       // Loop over size maxnumblocks until full range covered
       for (index_type tile_id1 = static_cast<index_type>(blockIdx.y);
@@ -146,7 +129,9 @@ struct DeviceIterateTile<2, PolicyType, Functor, Tag> {
           }
         }
       }
-    } else {
+    }
+    // LR
+    else {
       for (index_type tile_id0 = static_cast<index_type>(blockIdx.x);
            tile_id0 < m_policy.m_tile_end[0]; tile_id0 += gridDim.x) {
         const index_type offset_0 =
@@ -199,12 +184,13 @@ struct DeviceIterateTile<3, PolicyType, Functor, Tag> {
         threadIdx(threadIdx_) {}
 #else
   KOKKOS_IMPL_DEVICE_FUNCTION DeviceIterateTile(const PolicyType& policy_,
-                                                const Functor& f_)
+                                                  const Functor& f_)
       : m_policy(policy_), m_func(f_) {}
 #endif
 
   KOKKOS_IMPL_DEVICE_FUNCTION
   void exec_range() const {
+    // LL
     if (PolicyType::inner_direction == Iterate::Left) {
       for (index_type tile_id2 = static_cast<index_type>(blockIdx.z);
            tile_id2 < m_policy.m_tile_end[2]; tile_id2 += gridDim.z) {
@@ -237,7 +223,9 @@ struct DeviceIterateTile<3, PolicyType, Functor, Tag> {
           }
         }
       }
-    } else {
+    }
+    // LR
+    else {
       for (index_type tile_id0 = static_cast<index_type>(blockIdx.x);
            tile_id0 < m_policy.m_tile_end[0]; tile_id0 += gridDim.x) {
         const index_type offset_0 =
@@ -300,22 +288,23 @@ struct DeviceIterateTile<4, PolicyType, Functor, Tag> {
         threadIdx(threadIdx_) {}
 #else
   KOKKOS_IMPL_DEVICE_FUNCTION DeviceIterateTile(const PolicyType& policy_,
-                                                const Functor& f_)
+                                                  const Functor& f_)
       : m_policy(policy_), m_func(f_) {}
 #endif
 
-  static constexpr index_type max_blocks = 65535;
-
   KOKKOS_IMPL_DEVICE_FUNCTION
   void exec_range() const {
+    // LL
     if (PolicyType::inner_direction == Iterate::Left) {
-      const index_type temp0  = m_policy.m_tile_end[0];
-      const index_type temp1  = m_policy.m_tile_end[1];
-      const index_type numbl0 = (temp0 <= max_blocks ? temp0 : max_blocks);
+      const index_type temp0 = m_policy.m_tile_end[0];
+      const index_type temp1 = m_policy.m_tile_end[1];
+      const index_type numbl0 =
+          (temp0 <= mdrange_max_blocks_x ? temp0 : mdrange_max_blocks_x);
       const index_type numbl1 =
-          (temp0 * temp1 > max_blocks
-               ? static_cast<index_type>(max_blocks / numbl0)
-               : (temp1 <= max_blocks ? temp1 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks_x
+               ? static_cast<index_type>(mdrange_max_blocks_x / numbl0)
+               : (temp1 <= mdrange_max_blocks_x ? temp1
+                                                : mdrange_max_blocks_x));
 
       const index_type tile_id0 = static_cast<index_type>(blockIdx.x) % numbl0;
       const index_type tile_id1 = static_cast<index_type>(blockIdx.x) / numbl0;
@@ -364,14 +353,18 @@ struct DeviceIterateTile<4, PolicyType, Functor, Tag> {
           }
         }
       }
-    } else {
-      const index_type temp0  = m_policy.m_tile_end[0];
-      const index_type temp1  = m_policy.m_tile_end[1];
-      const index_type numbl1 = (temp1 <= max_blocks ? temp1 : max_blocks);
+    }
+    // LR
+    else {
+      const index_type temp0 = m_policy.m_tile_end[0];
+      const index_type temp1 = m_policy.m_tile_end[1];
+      const index_type numbl1 =
+          (temp1 <= mdrange_max_blocks_x ? temp1 : mdrange_max_blocks_x);
       const index_type numbl0 =
-          (temp0 * temp1 > max_blocks
-               ? index_type(max_blocks / numbl1)
-               : (temp0 <= max_blocks ? temp0 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks_x
+               ? index_type(mdrange_max_blocks_x / numbl1)
+               : (temp0 <= mdrange_max_blocks_x ? temp0
+                                                : mdrange_max_blocks_x));
 
       const index_type tile_id0 = static_cast<index_type>(blockIdx.x) / numbl1;
       const index_type tile_id1 = static_cast<index_type>(blockIdx.x) % numbl1;
@@ -452,23 +445,23 @@ struct DeviceIterateTile<5, PolicyType, Functor, Tag> {
         threadIdx(threadIdx_) {}
 #else
   KOKKOS_IMPL_DEVICE_FUNCTION DeviceIterateTile(const PolicyType& policy_,
-                                                const Functor& f_)
+                                                  const Functor& f_)
       : m_policy(policy_), m_func(f_) {}
 #endif
-
-  static constexpr index_type max_blocks = 65535;
 
   KOKKOS_IMPL_DEVICE_FUNCTION
   void exec_range() const {
     // LL
     if (PolicyType::inner_direction == Iterate::Left) {
-      index_type temp0        = m_policy.m_tile_end[0];
-      index_type temp1        = m_policy.m_tile_end[1];
-      const index_type numbl0 = (temp0 <= max_blocks ? temp0 : max_blocks);
+      index_type temp0 = m_policy.m_tile_end[0];
+      index_type temp1 = m_policy.m_tile_end[1];
+      const index_type numbl0 =
+          (temp0 <= mdrange_max_blocks_x ? temp0 : mdrange_max_blocks_x);
       const index_type numbl1 =
-          (temp0 * temp1 > max_blocks
-               ? index_type(max_blocks / numbl0)
-               : (temp1 <= max_blocks ? temp1 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks_x
+               ? index_type(mdrange_max_blocks_x / numbl0)
+               : (temp1 <= mdrange_max_blocks_x ? temp1
+                                                : mdrange_max_blocks_x));
 
       const index_type tile_id0 = static_cast<index_type>(blockIdx.x) % numbl0;
       const index_type tile_id1 = static_cast<index_type>(blockIdx.x) / numbl0;
@@ -477,13 +470,14 @@ struct DeviceIterateTile<5, PolicyType, Functor, Tag> {
       const index_type thr_id1 =
           static_cast<index_type>(threadIdx.x) / m_policy.m_tile[0];
 
-      temp0                   = m_policy.m_tile_end[2];
-      temp1                   = m_policy.m_tile_end[3];
-      const index_type numbl2 = (temp0 <= max_blocks ? temp0 : max_blocks);
+      temp0 = m_policy.m_tile_end[2];
+      temp1 = m_policy.m_tile_end[3];
+      const index_type numbl2 =
+          (temp0 <= mdrange_max_blocks ? temp0 : mdrange_max_blocks);
       const index_type numbl3 =
-          (temp0 * temp1 > max_blocks
-               ? index_type(max_blocks / numbl2)
-               : (temp1 <= max_blocks ? temp1 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks
+               ? index_type(mdrange_max_blocks / numbl2)
+               : (temp1 <= mdrange_max_blocks ? temp1 : mdrange_max_blocks));
 
       const index_type tile_id2 = static_cast<index_type>(blockIdx.y) % numbl2;
       const index_type tile_id3 = static_cast<index_type>(blockIdx.y) / numbl2;
@@ -543,13 +537,15 @@ struct DeviceIterateTile<5, PolicyType, Functor, Tag> {
     }
     // LR
     else {
-      index_type temp0        = m_policy.m_tile_end[0];
-      index_type temp1        = m_policy.m_tile_end[1];
-      const index_type numbl1 = (temp1 <= max_blocks ? temp1 : max_blocks);
+      index_type temp0 = m_policy.m_tile_end[0];
+      index_type temp1 = m_policy.m_tile_end[1];
+      const index_type numbl1 =
+          (temp1 <= mdrange_max_blocks_x ? temp1 : mdrange_max_blocks_x);
       const index_type numbl0 =
-          (temp0 * temp1 > max_blocks
-               ? static_cast<index_type>(max_blocks / numbl1)
-               : (temp0 <= max_blocks ? temp0 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks_x
+               ? static_cast<index_type>(mdrange_max_blocks_x / numbl1)
+               : (temp0 <= mdrange_max_blocks_x ? temp0
+                                                : mdrange_max_blocks_x));
 
       const index_type tile_id0 = static_cast<index_type>(blockIdx.x) / numbl1;
       const index_type tile_id1 = static_cast<index_type>(blockIdx.x) % numbl1;
@@ -558,13 +554,14 @@ struct DeviceIterateTile<5, PolicyType, Functor, Tag> {
       const index_type thr_id1 =
           static_cast<index_type>(threadIdx.x) % m_policy.m_tile[1];
 
-      temp0                   = m_policy.m_tile_end[2];
-      temp1                   = m_policy.m_tile_end[3];
-      const index_type numbl3 = (temp1 <= max_blocks ? temp1 : max_blocks);
+      temp0 = m_policy.m_tile_end[2];
+      temp1 = m_policy.m_tile_end[3];
+      const index_type numbl3 =
+          (temp1 <= mdrange_max_blocks ? temp1 : mdrange_max_blocks);
       const index_type numbl2 =
-          (temp0 * temp1 > max_blocks
-               ? index_type(max_blocks / numbl3)
-               : (temp0 <= max_blocks ? temp0 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks
+               ? index_type(mdrange_max_blocks / numbl3)
+               : (temp0 <= mdrange_max_blocks ? temp0 : mdrange_max_blocks));
 
       const index_type tile_id2 = static_cast<index_type>(blockIdx.y) / numbl3;
       const index_type tile_id3 = static_cast<index_type>(blockIdx.y) % numbl3;
@@ -653,23 +650,23 @@ struct DeviceIterateTile<6, PolicyType, Functor, Tag> {
         threadIdx(threadIdx_) {}
 #else
   KOKKOS_IMPL_DEVICE_FUNCTION DeviceIterateTile(const PolicyType& policy_,
-                                                const Functor& f_)
+                                                  const Functor& f_)
       : m_policy(policy_), m_func(f_) {}
 #endif
-
-  static constexpr index_type max_blocks = 65535;
 
   KOKKOS_IMPL_DEVICE_FUNCTION
   void exec_range() const {
     // LL
     if (PolicyType::inner_direction == Iterate::Left) {
-      index_type temp0        = m_policy.m_tile_end[0];
-      index_type temp1        = m_policy.m_tile_end[1];
-      const index_type numbl0 = (temp0 <= max_blocks ? temp0 : max_blocks);
+      index_type temp0 = m_policy.m_tile_end[0];
+      index_type temp1 = m_policy.m_tile_end[1];
+      const index_type numbl0 =
+          (temp0 <= mdrange_max_blocks_x ? temp0 : mdrange_max_blocks_x);
       const index_type numbl1 =
-          (temp0 * temp1 > max_blocks
-               ? static_cast<index_type>(max_blocks / numbl0)
-               : (temp1 <= max_blocks ? temp1 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks_x
+               ? static_cast<index_type>(mdrange_max_blocks_x / numbl0)
+               : (temp1 <= mdrange_max_blocks_x ? temp1
+                                                : mdrange_max_blocks_x));
 
       const index_type tile_id0 = static_cast<index_type>(blockIdx.x) % numbl0;
       const index_type tile_id1 = static_cast<index_type>(blockIdx.x) / numbl0;
@@ -678,13 +675,14 @@ struct DeviceIterateTile<6, PolicyType, Functor, Tag> {
       const index_type thr_id1 =
           static_cast<index_type>(threadIdx.x) / m_policy.m_tile[0];
 
-      temp0                   = m_policy.m_tile_end[2];
-      temp1                   = m_policy.m_tile_end[3];
-      const index_type numbl2 = (temp0 <= max_blocks ? temp0 : max_blocks);
+      temp0 = m_policy.m_tile_end[2];
+      temp1 = m_policy.m_tile_end[3];
+      const index_type numbl2 =
+          (temp0 <= mdrange_max_blocks ? temp0 : mdrange_max_blocks);
       const index_type numbl3 =
-          (temp0 * temp1 > max_blocks
-               ? static_cast<index_type>(max_blocks / numbl2)
-               : (temp1 <= max_blocks ? temp1 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks
+               ? static_cast<index_type>(mdrange_max_blocks / numbl2)
+               : (temp1 <= mdrange_max_blocks ? temp1 : mdrange_max_blocks));
 
       const index_type tile_id2 = static_cast<index_type>(blockIdx.y) % numbl2;
       const index_type tile_id3 = static_cast<index_type>(blockIdx.y) / numbl2;
@@ -693,13 +691,14 @@ struct DeviceIterateTile<6, PolicyType, Functor, Tag> {
       const index_type thr_id3 =
           static_cast<index_type>(threadIdx.y) / m_policy.m_tile[2];
 
-      temp0                   = m_policy.m_tile_end[4];
-      temp1                   = m_policy.m_tile_end[5];
-      const index_type numbl4 = (temp0 <= max_blocks ? temp0 : max_blocks);
+      temp0 = m_policy.m_tile_end[4];
+      temp1 = m_policy.m_tile_end[5];
+      const index_type numbl4 =
+          (temp0 <= mdrange_max_blocks ? temp0 : mdrange_max_blocks);
       const index_type numbl5 =
-          (temp0 * temp1 > max_blocks
-               ? static_cast<index_type>(max_blocks / numbl4)
-               : (temp1 <= max_blocks ? temp1 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks
+               ? static_cast<index_type>(mdrange_max_blocks / numbl4)
+               : (temp1 <= mdrange_max_blocks ? temp1 : mdrange_max_blocks));
 
       const index_type tile_id4 = static_cast<index_type>(blockIdx.z) % numbl4;
       const index_type tile_id5 = static_cast<index_type>(blockIdx.z) / numbl4;
@@ -766,13 +765,15 @@ struct DeviceIterateTile<6, PolicyType, Functor, Tag> {
     }
     // LR
     else {
-      index_type temp0        = m_policy.m_tile_end[0];
-      index_type temp1        = m_policy.m_tile_end[1];
-      const index_type numbl1 = (temp1 <= max_blocks ? temp1 : max_blocks);
+      index_type temp0 = m_policy.m_tile_end[0];
+      index_type temp1 = m_policy.m_tile_end[1];
+      const index_type numbl1 =
+          (temp1 <= mdrange_max_blocks_x ? temp1 : mdrange_max_blocks_x);
       const index_type numbl0 =
-          (temp0 * temp1 > max_blocks
-               ? static_cast<index_type>(max_blocks / numbl1)
-               : (temp0 <= max_blocks ? temp0 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks_x
+               ? static_cast<index_type>(mdrange_max_blocks_x / numbl1)
+               : (temp0 <= mdrange_max_blocks_x ? temp0
+                                                : mdrange_max_blocks_x));
 
       const index_type tile_id0 = static_cast<index_type>(blockIdx.x) / numbl1;
       const index_type tile_id1 = static_cast<index_type>(blockIdx.x) % numbl1;
@@ -781,13 +782,14 @@ struct DeviceIterateTile<6, PolicyType, Functor, Tag> {
       const index_type thr_id1 =
           static_cast<index_type>(threadIdx.x) % m_policy.m_tile[1];
 
-      temp0                   = m_policy.m_tile_end[2];
-      temp1                   = m_policy.m_tile_end[3];
-      const index_type numbl3 = (temp1 <= max_blocks ? temp1 : max_blocks);
+      temp0 = m_policy.m_tile_end[2];
+      temp1 = m_policy.m_tile_end[3];
+      const index_type numbl3 =
+          (temp1 <= mdrange_max_blocks ? temp1 : mdrange_max_blocks);
       const index_type numbl2 =
-          (temp0 * temp1 > max_blocks
-               ? static_cast<index_type>(max_blocks / numbl3)
-               : (temp0 <= max_blocks ? temp0 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks
+               ? static_cast<index_type>(mdrange_max_blocks / numbl3)
+               : (temp0 <= mdrange_max_blocks ? temp0 : mdrange_max_blocks));
 
       const index_type tile_id2 = static_cast<index_type>(blockIdx.y) / numbl3;
       const index_type tile_id3 = static_cast<index_type>(blockIdx.y) % numbl3;
@@ -796,13 +798,14 @@ struct DeviceIterateTile<6, PolicyType, Functor, Tag> {
       const index_type thr_id3 =
           static_cast<index_type>(threadIdx.y) % m_policy.m_tile[3];
 
-      temp0                   = m_policy.m_tile_end[4];
-      temp1                   = m_policy.m_tile_end[5];
-      const index_type numbl5 = (temp1 <= max_blocks ? temp1 : max_blocks);
+      temp0 = m_policy.m_tile_end[4];
+      temp1 = m_policy.m_tile_end[5];
+      const index_type numbl5 =
+          (temp1 <= mdrange_max_blocks ? temp1 : mdrange_max_blocks);
       const index_type numbl4 =
-          (temp0 * temp1 > max_blocks
-               ? static_cast<index_type>(max_blocks / numbl5)
-               : (temp0 <= max_blocks ? temp0 : max_blocks));
+          (temp0 * temp1 > mdrange_max_blocks
+               ? static_cast<index_type>(mdrange_max_blocks / numbl5)
+               : (temp0 <= mdrange_max_blocks ? temp0 : mdrange_max_blocks));
 
       const index_type tile_id4 = static_cast<index_type>(blockIdx.z) / numbl5;
       const index_type tile_id5 = static_cast<index_type>(blockIdx.z) % numbl5;
@@ -884,9 +887,6 @@ struct DeviceIterateTile<6, PolicyType, Functor, Tag> {
 namespace Reduce {
 
 template <typename T>
-using is_void = std::is_same<T, void>;
-
-template <typename T>
 struct is_array_type : std::false_type {
   using value_type = T;
 };
@@ -905,8 +905,8 @@ struct is_array_type<T[]> : std::true_type {
 
 template <typename T>
 using value_type_storage_t =
-    typename std::conditional_t<is_array_type<T>::value, std::decay<T>,
-                                std::add_lvalue_reference<T> >::type;
+    std::conditional_t<is_array_type<T>::value, std::decay_t<T>,
+                       std::add_lvalue_reference_t<T>>;
 
 // ParallelReduce iteration pattern
 // Scalar reductions
@@ -952,8 +952,8 @@ struct DeviceIterateTile {
         threadIdx(threadIdx_) {}
 #else
   KOKKOS_IMPL_DEVICE_FUNCTION DeviceIterateTile(const PolicyType& policy_,
-                                                const Functor& f_,
-                                                value_type_storage v_)
+                                                  const Functor& f_,
+                                                  value_type_storage v_)
       : m_policy(policy_), m_func(f_), m_v(v_) {}
 #endif
 

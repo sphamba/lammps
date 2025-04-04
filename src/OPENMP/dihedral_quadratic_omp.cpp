@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -31,9 +31,9 @@
 using namespace LAMMPS_NS;
 using namespace MathConst;
 
-#define TOLERANCE 0.05
-#define SMALL     0.001
-#define SMALLER   0.00001
+static constexpr double TOLERANCE = 0.05;
+static constexpr double SMALL =     0.001;
+static constexpr double SMALLER =   0.00001;
 
 /* ---------------------------------------------------------------------- */
 
@@ -97,8 +97,8 @@ void DihedralQuadraticOMP::eval(int nfrom, int nto, ThrData * const thr)
 
   edihedral = 0.0;
 
-  const dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
-  dbl3_t * _noalias const f = (dbl3_t *) thr->get_f()[0];
+  const auto * _noalias const x = (dbl3_t *) atom->x[0];
+  auto * _noalias const f = (dbl3_t *) thr->get_f()[0];
   const int5_t * _noalias const dihedrallist = (int5_t *) neighbor->dihedrallist[0];
   const int nlocal = atom->nlocal;
 

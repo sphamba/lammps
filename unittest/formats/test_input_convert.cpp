@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS Development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -49,6 +49,15 @@ TEST_F(InputConvertTest, logical)
     EXPECT_EQ(utils::logical(FLERR, "off", false, lmp), 0);
     EXPECT_EQ(utils::logical(FLERR, "0", false, lmp), 0);
 
+    EXPECT_EQ(utils::logical(FLERR, std::string("yes"), false, lmp), 1);
+    EXPECT_EQ(utils::logical(FLERR, std::string("true"), false, lmp), 1);
+    EXPECT_EQ(utils::logical(FLERR, std::string("on"), false, lmp), 1);
+    EXPECT_EQ(utils::logical(FLERR, std::string("1"), false, lmp), 1);
+    EXPECT_EQ(utils::logical(FLERR, std::string("no"), false, lmp), 0);
+    EXPECT_EQ(utils::logical(FLERR, std::string("false"), false, lmp), 0);
+    EXPECT_EQ(utils::logical(FLERR, std::string("off"), false, lmp), 0);
+    EXPECT_EQ(utils::logical(FLERR, std::string("0"), false, lmp), 0);
+
     TEST_FAILURE(".*ERROR: Expected boolean parameter instead of.*",
                  utils::logical(FLERR, "YES", false, lmp););
     TEST_FAILURE(".*ERROR: Expected boolean parameter instead of.*",
@@ -94,11 +103,31 @@ TEST_F(InputConvertTest, numeric)
     EXPECT_DOUBLE_EQ(utils::numeric(FLERR, "10000000000", false, lmp), 1e10);
     EXPECT_DOUBLE_EQ(utils::numeric(FLERR, "2.56E+3", false, lmp), 2560);
 
+    EXPECT_DOUBLE_EQ(utils::numeric(FLERR, std::string("0"), false, lmp), 0);
+    EXPECT_DOUBLE_EQ(utils::numeric(FLERR, std::string("0.1"), false, lmp), 0.1);
+    EXPECT_DOUBLE_EQ(utils::numeric(FLERR, std::string("-.232"), false, lmp), -0.232);
+    EXPECT_DOUBLE_EQ(utils::numeric(FLERR, std::string(".2e5"), false, lmp), 20000.0);
+    EXPECT_DOUBLE_EQ(utils::numeric(FLERR, std::string("2.5e-10"), false, lmp), 2.5e-10);
+    EXPECT_DOUBLE_EQ(utils::numeric(FLERR, std::string("+0.3"), false, lmp), 0.3);
+    EXPECT_DOUBLE_EQ(utils::numeric(FLERR, std::string("10000000000"), false, lmp), 1e10);
+    EXPECT_DOUBLE_EQ(utils::numeric(FLERR, std::string("2.56E+3"), false, lmp), 2560);
+
     TEST_FAILURE(".*ERROR: Expected floating point.*", utils::numeric(FLERR, "yay", false, lmp););
     TEST_FAILURE(".*ERROR: Expected floating point.*", utils::numeric(FLERR, "", false, lmp););
     TEST_FAILURE(".*ERROR: Expected floating point.*", utils::numeric(FLERR, nullptr, false, lmp););
     TEST_FAILURE(".*ERROR: Expected floating point.*",
                  utils::numeric(FLERR, "2.56D+3", false, lmp););
+    TEST_FAILURE(".*ERROR: Floating point number.*out of range.*",
+                 utils::numeric(FLERR, "1.0e2000", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected floating .*", utils::numeric(FLERR, "--546700-", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected floating.*", utils::numeric(FLERR, "546700+", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected floating.*", utils::numeric(FLERR, "--546700", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected floating.*", utils::numeric(FLERR, "++546700", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected floating.*", utils::numeric(FLERR, "+-546700", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected floating .*", utils::numeric(FLERR, "5.467e--1", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected floating.*", utils::numeric(FLERR, "4.4e++1", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected floating.*", utils::numeric(FLERR, "--5.0460", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected floating.*", utils::numeric(FLERR, "++5.4670", false, lmp););
 }
 
 TEST_F(InputConvertTest, inumeric)
@@ -110,6 +139,13 @@ TEST_F(InputConvertTest, inumeric)
     EXPECT_EQ(utils::inumeric(FLERR, "-0", false, lmp), 0);
     EXPECT_EQ(utils::inumeric(FLERR, "0100", false, lmp), 100);
 
+    EXPECT_EQ(utils::inumeric(FLERR, std::string("0"), false, lmp), 0);
+    EXPECT_EQ(utils::inumeric(FLERR, std::string("-1"), false, lmp), -1);
+    EXPECT_EQ(utils::inumeric(FLERR, std::string("10000"), false, lmp), 10000);
+    EXPECT_EQ(utils::inumeric(FLERR, std::string("-532410"), false, lmp), -532410);
+    EXPECT_EQ(utils::inumeric(FLERR, std::string("-0"), false, lmp), 0);
+    EXPECT_EQ(utils::inumeric(FLERR, std::string("0100"), false, lmp), 100);
+
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, "yay", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, "0.1", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, "1.1", false, lmp););
@@ -117,6 +153,13 @@ TEST_F(InputConvertTest, inumeric)
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, "0x05", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, "", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, nullptr, false, lmp););
+    TEST_FAILURE(".*ERROR: Integer.*out of range.*",
+                 utils::inumeric(FLERR, "1263012546700", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, "--546700-", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, "546700+", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, "--546700", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, "++546700", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::inumeric(FLERR, "+-546700", false, lmp););
 }
 
 TEST_F(InputConvertTest, bnumeric)
@@ -128,6 +171,13 @@ TEST_F(InputConvertTest, bnumeric)
     EXPECT_EQ(utils::bnumeric(FLERR, "-0", false, lmp), 0);
     EXPECT_EQ(utils::bnumeric(FLERR, "0100", false, lmp), 100);
 
+    EXPECT_EQ(utils::bnumeric(FLERR, std::string("0"), false, lmp), 0);
+    EXPECT_EQ(utils::bnumeric(FLERR, std::string("-1"), false, lmp), -1);
+    EXPECT_EQ(utils::bnumeric(FLERR, std::string("10000"), false, lmp), 10000);
+    EXPECT_EQ(utils::bnumeric(FLERR, std::string("-532410"), false, lmp), -532410);
+    EXPECT_EQ(utils::bnumeric(FLERR, std::string("-0"), false, lmp), 0);
+    EXPECT_EQ(utils::bnumeric(FLERR, std::string("0100"), false, lmp), 100);
+
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, "yay", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, "0.1", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, "1.1", false, lmp););
@@ -135,6 +185,13 @@ TEST_F(InputConvertTest, bnumeric)
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, "0x05", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, "", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, nullptr, false, lmp););
+    TEST_FAILURE(".*ERROR: Integer.*out of range.*",
+                 utils::bnumeric(FLERR, "18446744073709551616123", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, "--546700-", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, "546700+", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, "--546700", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, "++546700", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::bnumeric(FLERR, "+-546700", false, lmp););
 }
 
 TEST_F(InputConvertTest, tnumeric)
@@ -146,6 +203,13 @@ TEST_F(InputConvertTest, tnumeric)
     EXPECT_EQ(utils::tnumeric(FLERR, "-0", false, lmp), 0);
     EXPECT_EQ(utils::tnumeric(FLERR, "0100", false, lmp), 100);
 
+    EXPECT_EQ(utils::tnumeric(FLERR, std::string("0"), false, lmp), 0);
+    EXPECT_EQ(utils::tnumeric(FLERR, std::string("-1"), false, lmp), -1);
+    EXPECT_EQ(utils::tnumeric(FLERR, std::string("10000"), false, lmp), 10000);
+    EXPECT_EQ(utils::tnumeric(FLERR, std::string("-532410"), false, lmp), -532410);
+    EXPECT_EQ(utils::tnumeric(FLERR, std::string("-0"), false, lmp), 0);
+    EXPECT_EQ(utils::tnumeric(FLERR, std::string("0100"), false, lmp), 100);
+
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, "yay", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, "0.1", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, "1.1", false, lmp););
@@ -153,6 +217,17 @@ TEST_F(InputConvertTest, tnumeric)
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, "0x05", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, "", false, lmp););
     TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, nullptr, false, lmp););
+#if defined(LAMMPS_SMALLBIG)
+    TEST_FAILURE(".*ERROR: Integer.*out of range.*",
+                 utils::tnumeric(FLERR, "4294967296", false, lmp););
+#endif
+    TEST_FAILURE(".*ERROR: Integer.*out of range.*",
+                 utils::tnumeric(FLERR, "18446744073709551616123", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, "--546700-", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, "546700+", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, "--546700", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, "++546700", false, lmp););
+    TEST_FAILURE(".*ERROR: Expected integer.*", utils::tnumeric(FLERR, "+-546700", false, lmp););
 }
 
 } // namespace LAMMPS_NS

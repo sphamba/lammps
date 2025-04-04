@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -29,8 +29,8 @@ struct HyperOneCoeff {
 
 template <class T> class MyPage {
  public:
-  int ndatum;    // total # of stored datums
-  int nchunk;    // total # of stored chunks
+  bigint ndatum;    // total # of stored datums
+  int nchunk;       // total # of stored chunks
   MyPage();
   virtual ~MyPage();
 
@@ -62,7 +62,7 @@ template <class T> class MyPage {
   /** Mark *N* items as used of the chunk reserved with a preceding call to vget().
    *
    * This will advance the internal pointer inside the current memory page.
-   * It is not necessary to call this function for *N* = 0, that is the reserved
+   * It is not necessary to call this function for *N* = 0, implying the reserved
    * storage was not used.  A following call to vget() will then reserve the
    * same location again.  It is an error if *N* > *maxchunk*.
    *
@@ -104,6 +104,9 @@ template <class T> class MyPage {
   int errorflag;    // flag > 0 if error has occurred
                     // 1 = chunk size exceeded maxchunk
                     // 2 = memory allocation error
+#if defined(_OPENMP)
+  char pad[64];    // to avoid false sharing with multi-threading
+#endif
   void allocate();
   void deallocate();
 };

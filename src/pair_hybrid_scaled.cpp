@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -32,9 +32,14 @@ using namespace LAMMPS_NS;
 /* ---------------------------------------------------------------------- */
 
 PairHybridScaled::PairHybridScaled(LAMMPS *lmp) :
-    PairHybrid(lmp), fsum(nullptr), tsum(nullptr), scaleval(nullptr), scaleidx(nullptr)
+    PairHybrid(lmp), fsum(nullptr), tsum(nullptr), scaleval(nullptr), scaleidx(nullptr),
+    atomvar(nullptr), atomscale(nullptr)
 {
   nmaxfsum = -1;
+
+  // set comm size needed by this Pair (if atomscaleflag)
+
+  comm_forward = 1;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -45,6 +50,8 @@ PairHybridScaled::~PairHybridScaled()
   memory->destroy(tsum);
   delete[] scaleval;
   delete[] scaleidx;
+  delete[] atomvar;
+  memory->destroy(atomscale);
 }
 
 /* ----------------------------------------------------------------------
@@ -66,18 +73,35 @@ void PairHybridScaled::compute(int eflag, int vflag)
   // update scale values from variables where needed
 
   const int nvars = scalevars.size();
+  int atomscaleflag = 0;
   if (nvars > 0) {
-    double *vals = new double[nvars];
-    for (i = 0; i < nvars; ++i) {
-      j = input->variable->find(scalevars[i].c_str());
-      if (j < 0)
-        error->all(FLERR, "Variable '{}' not found when updating scale factors", scalevars[i]);
-      vals[i] = input->variable->compute_equal(j);
+    auto vals = new double[nvars];
+    auto vars = new int[nvars];
+    for (int k = 0; k < nvars; ++k) {
+      int m = input->variable->find(scalevars[k].c_str());
+      if (m < 0)
+        error->all(FLERR, "Variable '{}' not found when updating scale factors", scalevars[k]);
+
+      // for equal-style, compute variable, set variable index to -1
+      if (input->variable->equalstyle(m)) {
+        vals[k] = input->variable->compute_equal(m);
+        vars[k] = -1;
+        // for atom-style, store variable index, set variable to 0.0, set atomscaleflag
+      } else if (input->variable->atomstyle(m)) {
+        vals[k] = 0.0;
+        vars[k] = m;
+        atomscaleflag = 1;
+      } else
+        error->all(FLERR, "Variable '{}' has incompatible style", scalevars[k]);
     }
-    for (i = 0; i < nstyles; ++i) {
-      if (scaleidx[i] >= 0) scaleval[i] = vals[scaleidx[i]];
+    for (int k = 0; k < nstyles; ++k) {
+      if (scaleidx[k] >= 0) {
+        scaleval[k] = vals[scaleidx[k]];
+        atomvar[k] = vars[scaleidx[k]];
+      }
     }
     delete[] vals;
+    delete[] vars;
   }
 
   // check if no_virial_fdotr_compute is set and global component of
@@ -95,9 +119,11 @@ void PairHybridScaled::compute(int eflag, int vflag)
   if (atom->nmax > nmaxfsum) {
     memory->destroy(fsum);
     if (atom->torque_flag) memory->destroy(tsum);
+    if (atomscaleflag) memory->destroy(atomscale);
     nmaxfsum = atom->nmax;
     memory->create(fsum, nmaxfsum, 3, "pair:fsum");
     if (atom->torque_flag) memory->create(tsum, nmaxfsum, 3, "pair:tsum");
+    if (atomscaleflag) memory->create(atomscale, nmaxfsum, "pair:atomscale");
   }
   const int nall = atom->nlocal + atom->nghost;
   auto f = atom->f;
@@ -130,7 +156,7 @@ void PairHybridScaled::compute(int eflag, int vflag)
   Respa *respa = nullptr;
   respaflag = 0;
   if (utils::strmatch(update->integrate_style, "^respa")) {
-    respa = (Respa *) update->integrate;
+    respa = dynamic_cast<Respa *>(update->integrate);
     if (respa->nhybrid_styles > 0) respaflag = 1;
   }
 
@@ -157,14 +183,34 @@ void PairHybridScaled::compute(int eflag, int vflag)
 
     // add scaled forces to global sum
     const double scale = scaleval[m];
-    for (i = 0; i < nall; ++i) {
-      fsum[i][0] += scale * f[i][0];
-      fsum[i][1] += scale * f[i][1];
-      fsum[i][2] += scale * f[i][2];
-      if (atom->torque_flag) {
-        tsum[i][0] += scale * t[i][0];
-        tsum[i][1] += scale * t[i][1];
-        tsum[i][2] += scale * t[i][2];
+
+    // if scale factor is constant or equal-style variable
+    if (scaleidx[m] < 0 || atomvar[m] < 0) {
+      for (i = 0; i < nall; ++i) {
+        fsum[i][0] += scale * f[i][0];
+        fsum[i][1] += scale * f[i][1];
+        fsum[i][2] += scale * f[i][2];
+        if (atom->torque_flag) {
+          tsum[i][0] += scale * t[i][0];
+          tsum[i][1] += scale * t[i][1];
+          tsum[i][2] += scale * t[i][2];
+        }
+      }
+      // if scale factor is atom-style variable
+    } else {
+      const int igroupall = 0;
+      input->variable->compute_atom(atomvar[m], igroupall, atomscale, 1, 0);
+      comm->forward_comm(this);
+      for (i = 0; i < nall; ++i) {
+        const double ascale = atomscale[i];
+        fsum[i][0] += ascale * f[i][0];
+        fsum[i][1] += ascale * f[i][1];
+        fsum[i][2] += ascale * f[i][2];
+        if (atom->torque_flag) {
+          tsum[i][0] += ascale * t[i][0];
+          tsum[i][1] += ascale * t[i][1];
+          tsum[i][2] += ascale * t[i][2];
+        }
       }
     }
 
@@ -250,10 +296,11 @@ void PairHybridScaled::settings(int narg, char **arg)
     for (int m = 0; m < nstyles; m++) {
       delete styles[m];
       delete[] keywords[m];
-      if (special_lj[m]) delete[] special_lj[m];
-      if (special_coul[m]) delete[] special_coul[m];
+      delete[] special_lj[m];
+      delete[] special_coul[m];
     }
     delete[] styles;
+    delete[] cutmax_style;
     delete[] keywords;
     delete[] multiple;
     delete[] special_lj;
@@ -261,6 +308,7 @@ void PairHybridScaled::settings(int narg, char **arg)
     delete[] compute_tally;
     delete[] scaleval;
     delete[] scaleidx;
+    delete[] atomvar;
     scalevars.clear();
   }
 
@@ -276,6 +324,8 @@ void PairHybridScaled::settings(int narg, char **arg)
   // allocate list of sub-styles as big as possibly needed if no extra args
 
   styles = new Pair *[narg];
+  cutmax_style = new double[narg];
+  memset(cutmax_style, 0.0, narg * sizeof(double));
   keywords = new char *[narg];
   multiple = new int[narg];
 
@@ -285,6 +335,7 @@ void PairHybridScaled::settings(int narg, char **arg)
 
   scaleval = new double[narg];
   scaleidx = new int[narg];
+  atomvar = new int[narg];
   scalevars.reserve(narg);
 
   // allocate each sub-style
@@ -300,7 +351,8 @@ void PairHybridScaled::settings(int narg, char **arg)
   while (iarg < narg - 1) {
 
     // first process scale factor or variable
-    // idx < 0 indicates constant value otherwise index in variable name list
+    // scaleidx[k] < 0 indicates constant value, otherwise index in variable name list
+    // initialize atomvar[k] to -1, indicates not atom-style variable
 
     double val = 0.0;
     int idx = -1;
@@ -320,6 +372,7 @@ void PairHybridScaled::settings(int narg, char **arg)
     }
     scaleval[nstyles] = val;
     scaleidx[nstyles] = idx;
+    atomvar[nstyles] = -1;
     ++iarg;
 
     if (utils::strmatch(arg[iarg], "^hybrid"))
@@ -328,7 +381,7 @@ void PairHybridScaled::settings(int narg, char **arg)
       error->all(FLERR, "Pair style hybrid/scaled cannot have none as an argument");
 
     styles[nstyles] = force->new_pair(arg[iarg], 1, dummy);
-    force->store_style(keywords[nstyles], arg[iarg], 0);
+    keywords[nstyles] = force->store_style(arg[iarg], 0);
     special_lj[nstyles] = special_coul[nstyles] = nullptr;
     compute_tally[nstyles] = 1;
 
@@ -385,23 +438,37 @@ double PairHybridScaled::single(int i, int j, int itype, int jtype, double rsq, 
 
   const int nvars = scalevars.size();
   if (nvars > 0) {
-    double *vals = new double[nvars];
-    for (i = 0; i < nvars; ++i) {
-      j = input->variable->find(scalevars[i].c_str());
-      if (j < 0)
-        error->all(FLERR, "Variable '{}' not found when updating scale factors", scalevars[i]);
-      vals[i] = input->variable->compute_equal(j);
+    auto vals = new double[nvars];
+    auto vars = new int[nvars];
+    for (int k = 0; k < nvars; ++k) {
+      int m = input->variable->find(scalevars[k].c_str());
+      if (m < 0)
+        error->all(FLERR, "Variable '{}' not found when updating scale factors", scalevars[k]);
+
+      // for equal-style, compute variable, set variable index to -1
+      if (input->variable->equalstyle(m)) {
+        vals[k] = input->variable->compute_equal(m);
+        vars[k] = -1;
+        // for atom-style, store variable index, set variable to 0.0, set atomscaleflag
+      } else if (input->variable->atomstyle(m)) {
+        vals[k] = 0.0;
+        vars[k] = m;
+      } else
+        error->all(FLERR, "Variable '{}' has incompatible style", scalevars[k]);
     }
-    for (i = 0; i < nstyles; ++i) {
-      if (scaleidx[i] >= 0) scaleval[i] = vals[scaleidx[i]];
+    for (int k = 0; k < nstyles; ++k) {
+      if (scaleidx[k] >= 0) {
+        scaleval[k] = vals[scaleidx[k]];
+        atomvar[k] = vars[scaleidx[k]];
+      }
     }
     delete[] vals;
+    delete[] vars;
   }
 
   double fone;
   fforce = 0.0;
   double esum = 0.0;
-  double scale;
 
   for (int m = 0; m < nmap[itype][jtype]; m++) {
     auto pstyle = styles[map[itype][jtype][m]];
@@ -413,9 +480,20 @@ double PairHybridScaled::single(int i, int j, int itype, int jtype, double rsq, 
           (special_coul[map[itype][jtype][m]] != nullptr))
         error->one(FLERR, "Pair hybrid single() does not support per sub-style special_bond");
 
-      scale = scaleval[map[itype][jtype][m]];
+      double scale = scaleval[map[itype][jtype][m]];
       esum += scale * pstyle->single(i, j, itype, jtype, rsq, factor_coul, factor_lj, fone);
-      fforce += scale * fone;
+
+      // if scale factor is constant or equal-style variable
+      if (scaleidx[m] < 0 || atomvar[m] < 0) {
+        fforce += scale * fone;
+        // if scale factor is atom-style variable, average i and j
+      } else {
+        const int igroupall = 0;
+        input->variable->compute_atom(atomvar[m], igroupall, atomscale, 1, 0);
+        comm->forward_comm(this);
+        const double ascale = 0.5 * (atomscale[i] + atomscale[j]);
+        fforce += ascale * fone;
+      }
     }
   }
 
@@ -424,12 +502,90 @@ double PairHybridScaled::single(int i, int j, int itype, int jtype, double rsq, 
 }
 
 /* ----------------------------------------------------------------------
+   call sub-style to compute born matrix interaction
+   error if sub-style does not support born_matrix call
+   since overlay could have multiple sub-styles, sum results explicitly
+------------------------------------------------------------------------- */
+
+void PairHybridScaled::born_matrix(int i, int j, int itype, int jtype, double rsq,
+                                   double factor_coul, double factor_lj, double &dupair,
+                                   double &du2pair)
+{
+  if (nmap[itype][jtype] == 0) error->one(FLERR, "Invoked pair born_matrix on pair style none");
+
+  // update scale values from variables where needed
+
+  const int nvars = scalevars.size();
+  if (nvars > 0) {
+    auto vals = new double[nvars];
+    auto vars = new int[nvars];
+    for (int k = 0; k < nvars; ++k) {
+      int m = input->variable->find(scalevars[k].c_str());
+      if (m < 0)
+        error->all(FLERR, "Variable '{}' not found when updating scale factors", scalevars[k]);
+
+      // for equal-style, compute variable, set variable index to -1
+      if (input->variable->equalstyle(m)) {
+        vals[k] = input->variable->compute_equal(m);
+        vars[k] = -1;
+        // for atom-style, store variable index, set variable to 0.0, set atomscaleflag
+      } else if (input->variable->atomstyle(m)) {
+        vals[k] = 0.0;
+        vars[k] = m;
+      } else
+        error->all(FLERR, "Variable '{}' has incompatible style", scalevars[k]);
+    }
+    for (int k = 0; k < nstyles; ++k) {
+      if (scaleidx[k] >= 0) {
+        scaleval[k] = vals[scaleidx[k]];
+        atomvar[k] = vars[scaleidx[k]];
+      }
+    }
+    delete[] vals;
+    delete[] vars;
+  }
+
+  double du, du2;
+  dupair = du2pair = 0.0;
+
+  for (int m = 0; m < nmap[itype][jtype]; m++) {
+    auto pstyle = styles[map[itype][jtype][m]];
+    if (rsq < pstyle->cutsq[itype][jtype]) {
+      if (pstyle->single_enable == 0)
+        error->one(FLERR, "Pair hybrid sub-style does not support single call");
+
+      if ((special_lj[map[itype][jtype][m]] != nullptr) ||
+          (special_coul[map[itype][jtype][m]] != nullptr))
+        error->one(FLERR, "Pair hybrid single() does not support per sub-style special_bond");
+
+      du = du2 = 0.0;
+      double scale = scaleval[map[itype][jtype][m]];
+      pstyle->born_matrix(i, j, itype, jtype, rsq, factor_coul, factor_lj, du, du2);
+
+      // if scale factor is constant or equal-style variable
+      if (scaleidx[m] < 0 || atomvar[m] < 0) {
+        dupair += scale * du;
+        du2pair += scale * du2;
+        // if scale factor is atom-style variable, average i and j
+      } else {
+        const int igroupall = 0;
+        input->variable->compute_atom(atomvar[m], igroupall, atomscale, 1, 0);
+        comm->forward_comm(this);
+        const double ascale = 0.5 * (atomscale[i] + atomscale[j]);
+        dupair += ascale * du;
+        du2pair += ascale * du2;
+      }
+    }
+  }
+}
+
+/* ----------------------------------------------------------------------
    set coeffs for one or more type pairs
 ------------------------------------------------------------------------- */
 
 void PairHybridScaled::coeff(int narg, char **arg)
 {
-  if (narg < 3) error->all(FLERR, "Incorrect args for pair coefficients");
+  if (narg < 3) error->all(FLERR, "Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo, ihi, jlo, jhi;
@@ -448,7 +604,7 @@ void PairHybridScaled::coeff(int narg, char **arg)
     if (strcmp(arg[2], keywords[m]) == 0) {
       if (multiple[m]) {
         multflag = 1;
-        if (narg < 4) error->all(FLERR, "Incorrect args for pair coefficients");
+        if (narg < 4) error->all(FLERR, "Incorrect args for pair coefficients" + utils::errorurl(21));
         int index = utils::inumeric(FLERR, arg[3], false, lmp);
         if (index == multiple[m])
           break;
@@ -464,7 +620,7 @@ void PairHybridScaled::coeff(int narg, char **arg)
     if (strcmp(arg[2], "none") == 0)
       none = 1;
     else
-      error->all(FLERR, "Pair coeff for hybrid has invalid style");
+      error->all(FLERR, "Expected hybrid sub-style instead of {} in pair_coeff command", arg[2]);
   }
 
   // move 1st/2nd args to 2nd/3rd args
@@ -477,8 +633,8 @@ void PairHybridScaled::coeff(int narg, char **arg)
   // ensure that one_coeff flag is honored
 
   if (!none && styles[m]->one_coeff)
-    if ((strcmp(arg[0],"*") != 0) || (strcmp(arg[1],"*") != 0))
-      error->all(FLERR,"Incorrect args for pair coefficients");
+    if ((strcmp(arg[0], "*") != 0) || (strcmp(arg[1], "*") != 0))
+      error->all(FLERR, "Incorrect args for pair coefficients" + utils::errorurl(21));
 
   // invoke sub-style coeff() starting with 1st remaining arg
 
@@ -508,7 +664,7 @@ void PairHybridScaled::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR, "Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR, "Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -521,10 +677,11 @@ void PairHybridScaled::write_restart(FILE *fp)
 
   fwrite(scaleval, sizeof(double), nstyles, fp);
   fwrite(scaleidx, sizeof(int), nstyles, fp);
+  fwrite(atomvar, sizeof(int), nstyles, fp);
 
   int n = scalevars.size();
   fwrite(&n, sizeof(int), 1, fp);
-  for (auto var : scalevars) {
+  for (auto &var : scalevars) {
     n = var.size() + 1;
     fwrite(&n, sizeof(int), 1, fp);
     fwrite(var.c_str(), sizeof(char), n, fp);
@@ -541,17 +698,21 @@ void PairHybridScaled::read_restart(FILE *fp)
 
   delete[] scaleval;
   delete[] scaleidx;
+  delete[] atomvar;
   scalevars.clear();
   scaleval = new double[nstyles];
   scaleidx = new int[nstyles];
+  atomvar = new int[nstyles];
 
   int n, me = comm->me;
   if (me == 0) {
     utils::sfread(FLERR, scaleval, sizeof(double), nstyles, fp, nullptr, error);
     utils::sfread(FLERR, scaleidx, sizeof(int), nstyles, fp, nullptr, error);
+    utils::sfread(FLERR, atomvar, sizeof(int), nstyles, fp, nullptr, error);
   }
   MPI_Bcast(scaleval, nstyles, MPI_DOUBLE, 0, world);
   MPI_Bcast(scaleidx, nstyles, MPI_INT, 0, world);
+  MPI_Bcast(atomvar, nstyles, MPI_INT, 0, world);
 
   char *tmp;
   if (me == 0) utils::sfread(FLERR, &n, sizeof(int), 1, fp, nullptr, error);
@@ -593,7 +754,7 @@ void PairHybridScaled::init_svector()
 void PairHybridScaled::copy_svector(int itype, int jtype)
 {
   int n = 0;
-  Pair *this_style;
+  Pair *this_style = nullptr;
 
   // fill svector array.
   // copy data from active styles and use 0.0 for inactive ones
@@ -613,4 +774,29 @@ void PairHybridScaled::copy_svector(int itype, int jtype)
       }
     }
   }
+}
+
+/* ---------------------------------------------------------------------- */
+
+int PairHybridScaled::pack_forward_comm(int n, int *list, double *buf, int /*pbc_flag*/, int * /*pbc*/)
+{
+  int i,j,m;
+
+  m = 0;
+  for (i = 0; i < n; i++) {
+    j = list[i];
+    buf[m++] = atomscale[j];
+  }
+  return m;
+}
+
+/* ---------------------------------------------------------------------- */
+
+void PairHybridScaled::unpack_forward_comm(int n, int first, double *buf)
+{
+  int i,m,last;
+
+  m = 0;
+  last = first + n;
+  for (i = first; i < last; i++) atomscale[i] = buf[m++];
 }

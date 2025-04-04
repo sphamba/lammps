@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -18,6 +18,7 @@
 ------------------------------------------------------------------------- */
 
 #include "npair_half_bin_newton_ssa.h"
+
 #include "nstencil_ssa.h"
 #include "nbin_ssa.h"
 #include "neigh_list.h"
@@ -97,12 +98,12 @@ void NPairHalfBinNewtonSSA::build(NeighList *list)
   int **firstneigh = list->firstneigh;
   MyPage<int> *ipage = list->ipage;
 
-  NStencilSSA *ns_ssa = dynamic_cast<NStencilSSA*>(ns);
+  auto ns_ssa = dynamic_cast<NStencilSSA*>(ns);
   if (!ns_ssa) error->one(FLERR, "NStencil wasn't a NStencilSSA object");
   int *nstencil_ssa = &(ns_ssa->nstencil_ssa[0]);
   int nstencil_full = ns_ssa->nstencil;
 
-  NBinSSA *nb_ssa = dynamic_cast<NBinSSA*>(nb);
+  auto nb_ssa = dynamic_cast<NBinSSA*>(nb);
   if (!nb_ssa) error->one(FLERR, "NBin wasn't a NBinSSA object");
   int *bins = nb_ssa->bins;
   int *binhead = nb_ssa->binhead;

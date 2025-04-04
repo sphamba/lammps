@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -13,16 +13,13 @@
 
 #include "lammps.h"
 
-#include "accelerator_kokkos.h"
-#include "input.h"
-#include "lmppython.h"
-
-#if defined(LAMMPS_EXCEPTIONS)
 #include "exceptions.h"
-#endif
+#include "input.h"
+#include "library.h"
 
 #include <cstdlib>
 #include <mpi.h>
+#include <new>
 
 #if defined(LAMMPS_TRAP_FPE) && defined(_GNU_SOURCE)
 #include <fenv.h>
@@ -35,6 +32,13 @@
 
 using namespace LAMMPS_NS;
 
+// for convenience
+static void finalize()
+{
+  lammps_kokkos_finalize();
+  lammps_python_finalize();
+}
+
 /* ----------------------------------------------------------------------
    main program to drive LAMMPS
 ------------------------------------------------------------------------- */
@@ -42,7 +46,6 @@ using namespace LAMMPS_NS;
 int main(int argc, char **argv)
 {
   MPI_Init(&argc, &argv);
-
   MPI_Comm lammps_comm = MPI_COMM_WORLD;
 
 #if defined(LMP_MDI)
@@ -70,43 +73,35 @@ int main(int argc, char **argv)
   feenableexcept(FE_OVERFLOW);
 #endif
 
-#ifdef LAMMPS_EXCEPTIONS
   try {
-    LAMMPS *lammps = new LAMMPS(argc, argv, lammps_comm);
+    auto lammps = new LAMMPS(argc, argv, lammps_comm);
     lammps->input->file();
     delete lammps;
   } catch (LAMMPSAbortException &ae) {
-    KokkosLMP::finalize();
-    Python::finalize();
-    MPI_Abort(ae.universe, 1);
+    finalize();
+    MPI_Abort(ae.get_universe(), 1);
   } catch (LAMMPSException &) {
-    KokkosLMP::finalize();
-    Python::finalize();
+    finalize();
     MPI_Barrier(lammps_comm);
     MPI_Finalize();
     exit(1);
   } catch (fmt::format_error &fe) {
-    fprintf(stderr, "fmt::format_error: %s\n", fe.what());
-    KokkosLMP::finalize();
-    Python::finalize();
+    fprintf(stderr, "\nfmt::format_error: %s%s\n", fe.what(), utils::errorurl(12).c_str());
+    finalize();
+    MPI_Abort(MPI_COMM_WORLD, 1);
+    exit(1);
+  } catch (std::bad_alloc &ae) {
+    fprintf(stderr, "C++ memory allocation failed: %s\n", ae.what());
+    finalize();
+    MPI_Abort(MPI_COMM_WORLD, 1);
+    exit(1);
+  } catch (std::exception &e) {
+    fprintf(stderr, "Exception: %s\n", e.what());
+    finalize();
     MPI_Abort(MPI_COMM_WORLD, 1);
     exit(1);
   }
-#else
-  try {
-    LAMMPS *lammps = new LAMMPS(argc, argv, lammps_comm);
-    lammps->input->file();
-    delete lammps;
-  } catch (fmt::format_error &fe) {
-    fprintf(stderr, "fmt::format_error: %s\n", fe.what());
-    KokkosLMP::finalize();
-    Python::finalize();
-    MPI_Abort(MPI_COMM_WORLD, 1);
-    exit(1);
-  }
-#endif
-  KokkosLMP::finalize();
-  Python::finalize();
+  finalize();
   MPI_Barrier(lammps_comm);
   MPI_Finalize();
 }

@@ -1,8 +1,7 @@
-// clang-format off
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -13,27 +12,35 @@
 ------------------------------------------------------------------------- */
 
 #include "compute_contact_atom.h"
-#include <cstring>
+
 #include "atom.h"
-#include "update.h"
-#include "modify.h"
-#include "neighbor.h"
-#include "neigh_list.h"
-#include "neigh_request.h"
-#include "force.h"
 #include "comm.h"
-#include "memory.h"
 #include "error.h"
+#include "force.h"
+#include "group.h"
+#include "memory.h"
+#include "modify.h"
+#include "neigh_list.h"
+#include "neighbor.h"
+#include "update.h"
 
 using namespace LAMMPS_NS;
 
 /* ---------------------------------------------------------------------- */
 
 ComputeContactAtom::ComputeContactAtom(LAMMPS *lmp, int narg, char **arg) :
-  Compute(lmp, narg, arg),
-  contact(nullptr)
+    Compute(lmp, narg, arg), group2(nullptr), contact(nullptr)
 {
-  if (narg != 3) error->all(FLERR,"Illegal compute contact/atom command");
+  if ((narg != 3) && (narg != 4)) error->all(FLERR, "Illegal compute contact/atom command");
+
+  jgroup = group->find("all");
+  jgroupbit = group->bitmask[jgroup];
+  if (narg == 4) {
+    group2 = utils::strdup(arg[3]);
+    jgroup = group->find(group2);
+    if (jgroup == -1) error->all(FLERR, "Compute contact/atom group2 ID {} does not exist", group2);
+    jgroupbit = group->bitmask[jgroup];
+  }
 
   peratom_flag = 1;
   size_peratom_cols = 0;
@@ -43,8 +50,7 @@ ComputeContactAtom::ComputeContactAtom(LAMMPS *lmp, int narg, char **arg) :
 
   // error checks
 
-  if (!atom->sphere_flag)
-    error->all(FLERR,"Compute contact/atom requires atom style sphere");
+  if (!atom->radius_flag) error->all(FLERR, "Compute contact/atom requires atom attribute radius");
 }
 
 /* ---------------------------------------------------------------------- */
@@ -52,6 +58,7 @@ ComputeContactAtom::ComputeContactAtom(LAMMPS *lmp, int narg, char **arg) :
 ComputeContactAtom::~ComputeContactAtom()
 {
   memory->destroy(contact);
+  delete[] group2;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -59,21 +66,14 @@ ComputeContactAtom::~ComputeContactAtom()
 void ComputeContactAtom::init()
 {
   if (force->pair == nullptr)
-    error->all(FLERR,"Compute contact/atom requires a pair style be defined");
+    error->all(FLERR, "Compute contact/atom requires a pair style be defined");
 
-  int count = 0;
-  for (int i = 0; i < modify->ncompute; i++)
-    if (strcmp(modify->compute[i]->style,"contact/atom") == 0) count++;
-  if (count > 1 && comm->me == 0)
-    error->warning(FLERR,"More than one compute contact/atom");
+  if (modify->get_compute_by_style("contact/atom").size() > 1 && comm->me == 0)
+    error->warning(FLERR, "More than one compute contact/atom");
 
   // need an occasional neighbor list
 
-  int irequest = neighbor->request(this,instance_me);
-  neighbor->requests[irequest]->size = 1;
-  neighbor->requests[irequest]->pair = 0;
-  neighbor->requests[irequest]->compute = 1;
-  neighbor->requests[irequest]->occasional = 1;
+  neighbor->add_request(this, NeighConst::REQ_SIZE | NeighConst::REQ_OCCASIONAL);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -87,10 +87,10 @@ void ComputeContactAtom::init_list(int /*id*/, NeighList *ptr)
 
 void ComputeContactAtom::compute_peratom()
 {
-  int i,j,ii,jj,inum,jnum;
-  double xtmp,ytmp,ztmp,delx,dely,delz,rsq;
-  double radi,radsum,radsumsq;
-  int *ilist,*jlist,*numneigh,**firstneigh;
+  int i, j, ii, jj, inum, jnum;
+  double xtmp, ytmp, ztmp, delx, dely, delz, rsq;
+  double radi, radsum, radsumsq;
+  int *ilist, *jlist, *numneigh, **firstneigh;
 
   invoked_peratom = update->ntimestep;
 
@@ -99,7 +99,7 @@ void ComputeContactAtom::compute_peratom()
   if (atom->nmax > nmax) {
     memory->destroy(contact);
     nmax = atom->nmax;
-    memory->create(contact,nmax,"contact/atom:contact");
+    memory->create(contact, nmax, "contact/atom:contact");
     vector_atom = contact;
   }
 
@@ -121,52 +121,59 @@ void ComputeContactAtom::compute_peratom()
   int *mask = atom->mask;
   int nlocal = atom->nlocal;
   int nall = nlocal + atom->nghost;
+  bool update_i_flag, update_j_flag;
 
   for (i = 0; i < nall; i++) contact[i] = 0.0;
 
   for (ii = 0; ii < inum; ii++) {
     i = ilist[ii];
-    if (mask[i] & groupbit) {
-      xtmp = x[i][0];
-      ytmp = x[i][1];
-      ztmp = x[i][2];
-      radi = radius[i];
-      jlist = firstneigh[i];
-      jnum = numneigh[i];
 
-      for (jj = 0; jj < jnum; jj++) {
-        j = jlist[jj];
-        j &= NEIGHMASK;
+    // Only proceed if i is either part of the compute group or will contribute to contacts
+    if (!(mask[i] & groupbit) && !(mask[i] & jgroupbit)) continue;
 
-        delx = xtmp - x[j][0];
-        dely = ytmp - x[j][1];
-        delz = ztmp - x[j][2];
-        rsq = delx*delx + dely*dely + delz*delz;
-        radsum = radi + radius[j];
-        radsumsq = radsum*radsum;
-        if (rsq <= radsumsq) {
-          contact[i] += 1.0;
-          contact[j] += 1.0;
-        }
+    xtmp = x[i][0];
+    ytmp = x[i][1];
+    ztmp = x[i][2];
+    radi = radius[i];
+    jlist = firstneigh[i];
+    jnum = numneigh[i];
+
+    for (jj = 0; jj < jnum; jj++) {
+      j = jlist[jj];
+      j &= NEIGHMASK;
+
+      // Only tally for atoms in compute group (groupbit) if neighbor is in group2 (jgroupbit)
+      update_i_flag = (mask[i] & groupbit) && (mask[j] & jgroupbit);
+      update_j_flag = (mask[j] & groupbit) && (mask[i] & jgroupbit);
+      if (!update_i_flag && !update_j_flag) continue;
+
+      delx = xtmp - x[j][0];
+      dely = ytmp - x[j][1];
+      delz = ztmp - x[j][2];
+      rsq = delx * delx + dely * dely + delz * delz;
+      radsum = radi + radius[j];
+      radsumsq = radsum * radsum;
+      if (rsq <= radsumsq) {
+        if (update_i_flag) contact[i] += 1.0;
+        if (update_j_flag) contact[j] += 1.0;
       }
     }
   }
 
   // communicate ghost atom counts between neighbor procs if necessary
 
-  if (force->newton_pair) comm->reverse_comm_compute(this);
+  if (force->newton_pair) comm->reverse_comm(this);
 }
 
 /* ---------------------------------------------------------------------- */
 
 int ComputeContactAtom::pack_reverse_comm(int n, int first, double *buf)
 {
-  int i,m,last;
+  int i, m, last;
 
   m = 0;
   last = first + n;
-  for (i = first; i < last; i++)
-    buf[m++] = contact[i];
+  for (i = first; i < last; i++) buf[m++] = contact[i];
   return m;
 }
 
@@ -174,7 +181,7 @@ int ComputeContactAtom::pack_reverse_comm(int n, int first, double *buf)
 
 void ComputeContactAtom::unpack_reverse_comm(int n, int *list, double *buf)
 {
-  int i,j,m;
+  int i, j, m;
 
   m = 0;
   for (i = 0; i < n; i++) {
@@ -189,6 +196,6 @@ void ComputeContactAtom::unpack_reverse_comm(int n, int *list, double *buf)
 
 double ComputeContactAtom::memory_usage()
 {
-  double bytes = (double)nmax * sizeof(double);
+  double bytes = (double) nmax * sizeof(double);
   return bytes;
 }

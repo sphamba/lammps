@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -19,8 +19,10 @@
 #include "comm.h"
 #include "domain.h"
 #include "error.h"
+#include "fix_bond_history.h"
 #include "force.h"
 #include "group.h"
+#include "modify.h"
 #include "special.h"
 
 #include <cstring>
@@ -38,7 +40,7 @@ DeleteBonds::DeleteBonds(LAMMPS *lmp) : Command(lmp) {}
 void DeleteBonds::command(int narg, char **arg)
 {
   if (domain->box_exist == 0)
-    error->all(FLERR,"Delete_bonds command before simulation box is defined");
+    error->all(FLERR,"Delete_bonds command before simulation box is defined" + utils::errorurl(33));
   if (atom->natoms == 0)
     error->all(FLERR,"Delete_bonds command with no atoms existing");
   if (atom->molecular != Atom::MOLECULAR)
@@ -54,11 +56,9 @@ void DeleteBonds::command(int narg, char **arg)
 
   if (comm->me == 0) utils::logmesg(lmp,"Deleting bonds ...\n");
 
-  // identify group
+  // get group bitmask
 
-  int igroup = group->find(arg[0]);
-  if (igroup == -1) error->all(FLERR,"Cannot find delete_bonds group ID");
-  int groupbit = group->bitmask[igroup];
+  int groupbit = group->get_bitmask_by_id(FLERR, arg[0], "delete_bonds");
 
   // set style and which = type value
 
@@ -83,19 +83,37 @@ void DeleteBonds::command(int narg, char **arg)
     if (narg < 3) error->all(FLERR,"Illegal delete_bonds command");
 
     int n = -1;
-    if (style == ATOM) n = atom->ntypes;
-    if (style == BOND) n = atom->nbondtypes;
-    if (style == ANGLE) n = atom->nangletypes;
-    if (style == DIHEDRAL) n = atom->ndihedraltypes;
-    if (style == IMPROPER) n = atom->nimpropertypes;
+    char *typestr = nullptr;
+    if (style == ATOM) {
+      n = atom->ntypes;
+      typestr = utils::expand_type(FLERR, arg[2], Atom::ATOM, lmp);
+    }
+    if (style == BOND) {
+      n = atom->nbondtypes;
+      typestr = utils::expand_type(FLERR, arg[2], Atom::BOND, lmp);
+    }
+    if (style == ANGLE) {
+      n = atom->nangletypes;
+      typestr = utils::expand_type(FLERR, arg[2], Atom::ANGLE, lmp);
+    }
+    if (style == DIHEDRAL) {
+      n = atom->ndihedraltypes;
+      typestr = utils::expand_type(FLERR, arg[2], Atom::DIHEDRAL, lmp);
+    }
+    if (style == IMPROPER) {
+      n = atom->nimpropertypes;
+      typestr = utils::expand_type(FLERR, arg[2], Atom::IMPROPER, lmp);
+    }
 
     tlist = new int[n+1];
     for (int i = 0; i <= n; i++) tlist[i] = 0;
     int nlo,nhi;
-    utils::bounds(FLERR,arg[2],0,n,nlo,nhi,error);
+    if (typestr) nlo = nhi = utils::inumeric(FLERR, typestr, false, lmp);
+    else utils::bounds(FLERR, arg[2], 0, n, nlo, nhi, error);
     for (int i = nlo; i <= nhi; i++) tlist[i] = 1;
 
     iarg++;
+    delete[] typestr;
   }
 
   // grab optional keywords
@@ -116,7 +134,11 @@ void DeleteBonds::command(int narg, char **arg)
     iarg++;
   }
 
-  // border swap to insure type and mask is current for off-proc atoms
+  // find instances of bond history to delete data
+  auto histories = modify->get_fix_by_style("BOND_HISTORY");
+  int n_histories = histories.size();
+
+  // border swap to ensure type and mask is current for off-proc atoms
   // enforce PBC before in case atoms are outside box
 
   if (domain->triclinic) domain->x2lamda(atom->nlocal);
@@ -331,6 +353,11 @@ void DeleteBonds::command(int narg, char **arg)
               n = atom->num_bond[i];
               atom->bond_type[i][m] = atom->bond_type[i][n-1];
               atom->bond_atom[i][m] = atom->bond_atom[i][n-1];
+              if (n_histories > 0)
+                for (auto &ihistory: histories) {
+                  dynamic_cast<FixBondHistory *>(ihistory)->shift_history(i,m,n-1);
+                  dynamic_cast<FixBondHistory *>(ihistory)->delete_history(i,n-1);
+                }
               atom->num_bond[i]--;
             } else m++;
           } else m++;
@@ -431,32 +458,28 @@ void DeleteBonds::command(int narg, char **arg)
     if (atom->avec->bonds_allow) {
       bigint nbonds = 0;
       for (i = 0; i < nlocal; i++) nbonds += atom->num_bond[i];
-      MPI_Allreduce(&nbonds,&atom->nbonds,1,MPI_LMP_BIGINT,
-                    MPI_SUM,world);
+      MPI_Allreduce(&nbonds,&atom->nbonds,1,MPI_LMP_BIGINT,MPI_SUM,world);
       if (force->newton_bond == 0) atom->nbonds /= 2;
     }
 
     if (atom->avec->angles_allow) {
       bigint nangles = 0;
       for (i = 0; i < nlocal; i++) nangles += atom->num_angle[i];
-      MPI_Allreduce(&nangles,&atom->nangles,1,MPI_LMP_BIGINT,
-                    MPI_SUM,world);
+      MPI_Allreduce(&nangles,&atom->nangles,1,MPI_LMP_BIGINT,MPI_SUM,world);
       if (force->newton_bond == 0) atom->nangles /= 3;
     }
 
     if (atom->avec->dihedrals_allow) {
       bigint ndihedrals = 0;
       for (i = 0; i < nlocal; i++) ndihedrals += atom->num_dihedral[i];
-      MPI_Allreduce(&ndihedrals,&atom->ndihedrals,
-                    1,MPI_LMP_BIGINT,MPI_SUM,world);
+      MPI_Allreduce(&ndihedrals,&atom->ndihedrals,1,MPI_LMP_BIGINT,MPI_SUM,world);
       if (force->newton_bond == 0) atom->ndihedrals /= 4;
     }
 
     if (atom->avec->impropers_allow) {
       bigint nimpropers = 0;
       for (i = 0; i < nlocal; i++) nimpropers += atom->num_improper[i];
-      MPI_Allreduce(&nimpropers,&atom->nimpropers,
-                    1,MPI_LMP_BIGINT,MPI_SUM,world);
+      MPI_Allreduce(&nimpropers,&atom->nimpropers,1,MPI_LMP_BIGINT,MPI_SUM,world);
       if (force->newton_bond == 0) atom->nimpropers /= 4;
     }
 
@@ -535,21 +558,18 @@ void DeleteBonds::command(int narg, char **arg)
   }
 
   if (comm->me == 0) {
+    constexpr auto fmtstr = "  {} total {}, {} turned on, {} turned off\n";
     if (atom->avec->bonds_allow)
-      utils::logmesg(lmp,"  {} total bonds, {} turned on, {} turned off\n",
-                     atom->nbonds,bond_on,bond_off);
+      utils::logmesg(lmp,fmtstr,atom->nbonds,"bonds",bond_on,bond_off);
 
     if (atom->avec->angles_allow)
-      utils::logmesg(lmp,"  {} total angles, {} turned on, {} turned off\n",
-                     atom->nangles,angle_on,angle_off);
+      utils::logmesg(lmp,fmtstr,atom->nangles,"angles",angle_on,angle_off);
 
     if (atom->avec->dihedrals_allow)
-      utils::logmesg(lmp,"  {} total dihedrals, {} turned on, {} turned off\n",
-                     atom->ndihedrals,dihedral_on,dihedral_off);
+      utils::logmesg(lmp,fmtstr,atom->ndihedrals,"dihedrals",dihedral_on,dihedral_off);
 
     if (atom->avec->impropers_allow)
-      utils::logmesg(lmp,"  {} total impropers, {} turned on, {} turned off\n",
-                     atom->nimpropers,improper_on,improper_off);
+      utils::logmesg(lmp,fmtstr,atom->nimpropers,"impropers",improper_on,improper_off);
   }
 
   // re-compute special list if requested

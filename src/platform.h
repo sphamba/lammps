@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -18,6 +18,7 @@
 
 #include "lmptype.h"
 
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -27,9 +28,9 @@ namespace platform {
   /*! Return the consumed CPU time for the current process in seconds
    *
    * This is a wrapper around the POSIX function getrusage() and its Windows equivalent.
-   * It is to be used in a similar fashion than MPI_Wtime(). Its resolution may
-   * be rather low so it can only be trusted when observing processes consuming at
-   * seconds or more of CPU time.
+   * It is to be used in a similar fashion as MPI_Wtime().  Its resolution may be rather
+   * low so it can only be trusted when observing processes consuming CPU time of at least
+   * a few seconds.
    *
    *  \return used CPU time in seconds */
 
@@ -37,8 +38,8 @@ namespace platform {
 
   /*! Return the wall clock state for the current process in seconds
    *
-   * This this clock is counting continuous time is initialized during
-   * Load of the executable/library. Its absolute value must be considered
+   * This clock is counting continuous time and is initialized during
+   * load of the executable/library.  Its absolute value must be considered
    * arbitrary and thus elapsed wall times are measured in taking differences.
    * It is therefore to be used in a similar fashion as MPI_Wtime() but
    * has a different offset, usually leading to better resolution.
@@ -109,12 +110,28 @@ namespace platform {
 
   std::string mpi_info(int &major, int &minor);
 
+  /*! Return string with list of available compression types and executables
+   *
+   * This function tests which of the supported compression executables
+   * are available for reading or writing compressed files where supported.
+   *
+   *  \return  string with list of available compression tools */
+
+  std::string compress_info();
+
   /*! Add variable to the environment
    *
    * \param  vardef  variable name or variable definition (NAME=value)
    * \return -1 if failure otherwise 0 */
 
   int putenv(const std::string &vardef);
+
+  /*! Delete variable from the environment
+   *
+   * \param  variable  variable name
+   * \return -1 if failure otherwise 0 */
+
+  int unsetenv(const std::string &variable);
 
   /*! Get list of entries in a path environment variable
    *
@@ -137,7 +154,7 @@ namespace platform {
    *
    * Return a human-readable string describing the most recent error that
    * occurred when using one of the functions for dynamic loading objects
-   * the last call to this function. The string is empty, if there was no error.
+   * the last call to this function. If there was no error, the string is empty.
    *
    * \return  string with error message or empty */
 
@@ -230,13 +247,13 @@ namespace platform {
    * This function will traverse the list of directories in the PATH
    * environment variable and look for the executable *cmd*.  If the
    * file exists and is executable the full path is returned as string,
-   * otherwise and empty string is returned.
+   * otherwise an empty string is returned.
    *
-   * On Windows the *cmd* string must not include and extension as
+   * On Windows the *cmd* string must not include an extension as
    * this function will automatically append the extensions ".exe",
    * ".com" and ".bat" and look for those paths. On Windows also the
-   * current directory is checked (and first), while otherwise not unless
-   * "." exists in the PATH environment variable.
+   * current directory is checked (and first), but otherwise is not checked
+   * unless "." exists in the PATH environment variable.
    *
    * Because of the nature of the check, this will not detect shell functions
    * built-in command or aliases.
@@ -255,6 +272,11 @@ namespace platform {
 
   /*! Create a directory
    *
+   * Unlike the the ``mkdir()`` or ``_mkdir()`` functions of the
+   * C library, this function will also try to create non-existing sub-directories
+   * in case they don't exist, and thus behaves like the ``mkdir -p`` command rather
+   * than plain ``mkdir`` or ``md`.
+   *
    * \param  path  directory path
    * \return -1 if unsuccessful, otherwise >= 0  */
 
@@ -262,18 +284,18 @@ namespace platform {
 
   /*! Delete a directory
    *
+   * Unlike the the ``rmdir()`` or ``_rmdir()`` functions of the
+   * C library, this function will check for the contents of the
+   * folder and recurse into any sub-folders, if necessary, and
+   * delete all contained folders and their contents before
+   * deleting the folder *path*.
+   *
    * \param  path  directory path
    * \return -1 if unsuccessful, otherwise >= 0  */
 
   int rmdir(const std::string &path);
 
-  /*! Delete a directory and its contents
-   *
-   * Unlike the the ``rmdir()`` or ``_rmdir()`` function of the
-   * C library, this function will check for the contents of the
-   * folder and recurse into any sub-folders, if necessary and
-   * delete all contained folders and their contents before
-   * deleting the folder *path*.
+  /*! Delete a file
    *
    *  \param   path    path to file to be deleted
    *  \return  0 on success, -1 on error */
@@ -354,6 +376,22 @@ namespace platform {
    * \return true if file exists and is readable */
 
   bool file_is_readable(const std::string &path);
+
+  /*! Check if file can be opened for writing
+   *
+   * \param path file path
+   * \return true if file can be opened for writing */
+
+  bool file_is_writable(const std::string &path);
+
+  /*! Return free disk space in bytes of file system pointed to by path
+   *
+   * Returns -1.0 if the path is invalid or free space reporting not supported.
+   *
+   * \param path file or folder path in file system
+   * \return  */
+
+  double disk_free(const std::string &path);
 
   /*! Check if a file name ends in a known extension for a compressed file format
    *

@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -67,7 +67,7 @@ FixSAEDVTK::FixSAEDVTK(LAMMPS *lmp, int narg, char **arg) :
     error->all(FLERR,"Compute ID for fix saed/vtk does not exist");
 
   // Check that specified compute is for SAED
-  compute_saed = (ComputeSAED *) modify->compute[icompute];
+  compute_saed = dynamic_cast<ComputeSAED *>(modify->compute[icompute]);
   if (strcmp(compute_saed->style,"saed") != 0)
     error->all(FLERR,"Fix saed/vtk has invalid compute assigned");
 
@@ -114,6 +114,7 @@ FixSAEDVTK::FixSAEDVTK(LAMMPS *lmp, int narg, char **arg) :
   memory->create(vector_total,nrows,"saed/vtk:vector_total");
 
   vector_flag = 1;
+  extvector = 0;
   size_vector = nrows;
 
   if (nOutput == 0) {
@@ -248,8 +249,8 @@ FixSAEDVTK::FixSAEDVTK(LAMMPS *lmp, int narg, char **arg) :
 
 FixSAEDVTK::~FixSAEDVTK()
 {
-  delete [] filename;
-  delete [] ids;
+  delete[] filename;
+  delete[] ids;
   memory->destroy(vector);
   memory->destroy(vector_total);
   if (fp && comm->me == 0) fclose(fp);
@@ -407,7 +408,6 @@ void FixSAEDVTK::invoke_vector(bigint ntimestep)
 
     // Finding the intersection of the reciprical space and Ewald sphere
     int NROW1 = 0;
-    int NROW2 = 0;
     double dinv2 = 0.0;
     double r = 0.0;
     double K[3];
@@ -425,11 +425,9 @@ void FixSAEDVTK::invoke_vector(bigint ntimestep)
               fprintf(fp,"%g\n",vector_total[NROW1]/norm);
               fflush(fp);
               NROW1++;
-              NROW2++;
             } else {
               fprintf(fp,"%d\n",-1);
               fflush(fp);
-              NROW2++;
             }
           }
         }
@@ -449,17 +447,14 @@ void FixSAEDVTK::invoke_vector(bigint ntimestep)
               if  ( (r >  (R_Ewald - dR_Ewald) ) && (r < (R_Ewald + dR_Ewald) )) {
                 fprintf(fp,"%g\n",vector_total[NROW1]/norm);
                 fflush(fp);
-                NROW2++;
                 NROW1++;
               } else {
                 fprintf(fp,"%d\n",-1);
                 fflush(fp);
-                NROW2++;
               }
             } else {
               fprintf(fp,"%d\n",-1);
               fflush(fp);
-              NROW2++;
             }
           }
         }

@@ -1,8 +1,7 @@
-// clang-format off
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -15,7 +14,6 @@
 #ifdef FIX_CLASS
 // clang-format off
 FixStyle(reaxff/bonds,FixReaxFFBonds);
-FixStyle(reax/c/bonds,FixReaxFFBonds);
 // clang-format on
 #else
 
@@ -29,18 +27,20 @@ namespace LAMMPS_NS {
 class FixReaxFFBonds : public Fix {
  public:
   FixReaxFFBonds(class LAMMPS *, int, char **);
-  virtual ~FixReaxFFBonds();
-  int setmask();
-  virtual void init();
-  void setup(int);
-  void end_of_step();
+  ~FixReaxFFBonds() override;
+  int setmask() override;
+  void init() override;
+  void setup(int) override;
+  void end_of_step() override;
 
  protected:
-  int me, nprocs, nmax, ntypes, maxsize, compressed;
+  int nmax, compressed, multifile, padflag;
   int *numneigh;
   tagint **neighid;
   double **abo;
   FILE *fp;
+  std::string filename;
+  bool first_flag;
 
   void allocate();
   void destroy();
@@ -49,9 +49,9 @@ class FixReaxFFBonds : public Fix {
   void PassBuffer(double *, int &);
   void RecvBuffer(double *, int, int, int, int);
   int nint(const double &);
-  virtual double memory_usage();
+  int modify_param(int, char **) override;
+  double memory_usage() override;
 
-  bigint nvalid, nextvalid();
   struct _reax_list *lists;
   class PairReaxFF *reaxff;
   class NeighList *list;

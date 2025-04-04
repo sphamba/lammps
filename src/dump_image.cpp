@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -14,6 +14,7 @@
 
 #include "dump_image.h"
 
+#include "arg_info.h"
 #include "atom.h"
 #include "atom_vec.h"
 #include "atom_vec_body.h"
@@ -21,10 +22,13 @@
 #include "atom_vec_tri.h"
 #include "body.h"
 #include "comm.h"
+#include "compute.h"
 #include "domain.h"
 #include "error.h"
 #include "fix.h"
 #include "force.h"
+#include "grid2d.h"
+#include "grid3d.h"
 #include "image.h"
 #include "input.h"
 #include "math_const.h"
@@ -32,69 +36,72 @@
 #include "memory.h"
 #include "modify.h"
 #include "molecule.h"
+#include "output.h"
+#include "thermo.h"
 #include "tokenizer.h"
+#include "update.h"
 #include "variable.h"
 
-#include <cmath>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 
 using namespace LAMMPS_NS;
-using namespace MathConst;
+using MathConst::DEG2RAD;
 
-#define BIG 1.0e20
+static constexpr double BIG = 1.0e20;
 
-enum{NUMERIC,ATOM,TYPE,ELEMENT,ATTRIBUTE};
-enum{SPHERE,LINE,TRI};           // also in some Body and Fix child classes
-enum{STATIC,DYNAMIC};
-enum{NO=0,YES=1};
+enum { NUMERIC, ATOM, TYPE, ELEMENT, ATTRIBUTE };
+enum { SPHERE, LINE, TRI };    // also in some Body and Fix child classes
+enum { STATIC, DYNAMIC };
+enum { NO = 0, YES = 1 };
 
 /* ---------------------------------------------------------------------- */
 
 DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
-  DumpCustom(lmp, narg, arg), thetastr(nullptr), phistr(nullptr), cxstr(nullptr),
-  cystr(nullptr), czstr(nullptr), upxstr(nullptr), upystr(nullptr), upzstr(nullptr),
-  zoomstr(nullptr), diamtype(nullptr), diamelement(nullptr),
-  bdiamtype(nullptr), colortype(nullptr), colorelement(nullptr), bcolortype(nullptr),
-  avec_line(nullptr), avec_tri(nullptr), avec_body(nullptr), fixptr(nullptr), image(nullptr),
-  chooseghost(nullptr), bufcopy(nullptr)
+    DumpCustom(lmp, narg, arg), thetastr(nullptr), phistr(nullptr), cxstr(nullptr), cystr(nullptr),
+    czstr(nullptr), upxstr(nullptr), upystr(nullptr), upzstr(nullptr), zoomstr(nullptr),
+    diamtype(nullptr), diamelement(nullptr), bdiamtype(nullptr), colortype(nullptr),
+    colorelement(nullptr), bcolortype(nullptr), grid2d(nullptr), grid3d(nullptr),
+    id_grid_compute(nullptr), id_grid_fix(nullptr), grid_compute(nullptr), grid_fix(nullptr),
+    gbuf(nullptr), avec_line(nullptr), avec_tri(nullptr), avec_body(nullptr), fixptr(nullptr),
+    image(nullptr), chooseghost(nullptr), bufcopy(nullptr)
 {
-  if (binary || multiproc) error->all(FLERR,"Invalid dump image filename");
+  if (binary || multiproc)
+    error->all(FLERR, 4, "Invalid dump image filename {}", filename);
 
   // force binary flag on to avoid corrupted output on Windows
 
   binary = 1;
   multifile_override = 0;
 
+  // flag has_id as true to avoid bogus warnings about atom IDs for dump styles derived from DumpCustom
+
+  has_id = true;
+
   // set filetype based on filename suffix
 
-  int n = strlen(filename);
-  if (strlen(filename) > 4 && strcmp(&filename[n-4],".jpg") == 0)
+  if (utils::strmatch(filename, "\\.jpg$") || utils::strmatch(filename, "\\.JPG$")
+      || utils::strmatch(filename, "\\.jpeg$") || utils::strmatch(filename, "\\.JPEG$"))
     filetype = JPG;
-  else if (strlen(filename) > 4 && strcmp(&filename[n-4],".JPG") == 0)
-    filetype = JPG;
-  else if (strlen(filename) > 5 && strcmp(&filename[n-5],".jpeg") == 0)
-    filetype = JPG;
-  else if (strlen(filename) > 5 && strcmp(&filename[n-5],".JPEG") == 0)
-    filetype = JPG;
-  else if (strlen(filename) > 4 && strcmp(&filename[n-4],".png") == 0)
-    filetype = PNG;
-  else if (strlen(filename) > 4 && strcmp(&filename[n-4],".PNG") == 0)
+  else if  (utils::strmatch(filename, "\\.png$") || utils::strmatch(filename, "\\.PNG$"))
     filetype = PNG;
   else filetype = PPM;
 
 #ifndef LAMMPS_JPEG
   if (filetype == JPG)
-    error->all(FLERR,"Support for writing images in JPEG format not included");
+    error->all(FLERR, Error::NOLASTLINE, "Support for writing images in JPEG format not included");
 #endif
 #ifndef LAMMPS_PNG
   if (filetype == PNG)
-    error->all(FLERR,"Support for writing images in PNG format not included");
+    error->all(FLERR, Error::NOLASTLINE, "Support for writing images in PNG format not included");
 #endif
 
   // atom color,diameter settings
 
-  if (nfield != 2) error->all(FLERR,"Illegal dump image command");
+  if (nfield != 2)
+    error->all(FLERR, Error::NOPOINTER,
+               "Dump image command is missing attributes for color and size");
 
   acolor = ATTRIBUTE;
   if (strcmp(arg[5],"type") == 0) acolor = TYPE;
@@ -104,10 +111,10 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
   if (strcmp(arg[6],"type") == 0) adiam = TYPE;
   else if (strcmp(arg[6],"element") == 0) adiam = ELEMENT;
 
-  // create Image class with single colormap for atoms
+  // create Image class with two colormaps for atoms and grid cells
   // change defaults for 2d
 
-  image = new Image(lmp,1);
+  image = new Image(lmp,2);
 
   if (domain->dimension == 2) {
     image->theta = 0.0;
@@ -118,7 +125,9 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
   // set defaults for optional args
 
   atomflag = YES;
+  gridflag = NO;
   lineflag = triflag = bodyflag = fixflag = NO;
+
   if (atom->nbondtypes == 0) bondflag = NO;
   else {
     bondflag = YES;
@@ -128,13 +137,9 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
   }
   char *fixID = nullptr;
 
-  thetastr = phistr = nullptr;
   cflag = STATIC;
   cx = cy = cz = 0.5;
-  cxstr = cystr = czstr = nullptr;
 
-  upxstr = upystr = upzstr = nullptr;
-  zoomstr = nullptr;
   boxflag = YES;
   boxdiam = 0.02;
   axesflag = NO;
@@ -145,39 +150,64 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
   int iarg = ioptional;
   while (iarg < narg) {
     if (strcmp(arg[iarg],"atom") == 0) {
-      if (iarg+2 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+2 > narg) utils::missing_cmd_args(FLERR,"dump image atom", error);
       atomflag = utils::logical(FLERR,arg[iarg+1],false,lmp);
       iarg += 2;
 
     } else if (strcmp(arg[iarg],"adiam") == 0) {
-      if (iarg+2 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+2 > narg) utils::missing_cmd_args(FLERR,"dump image adiam", error);
       adiam = NUMERIC;
       adiamvalue = utils::numeric(FLERR,arg[iarg+1],false,lmp);
-      if (adiamvalue <= 0.0) error->all(FLERR,"Illegal dump image command");
+      if (adiamvalue <= 0.0)
+        error->all(FLERR, iarg+1, "Illegal dump image adiam value {}", adiamvalue);
       iarg += 2;
 
     } else if (strcmp(arg[iarg],"bond") == 0) {
-      if (iarg+3 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+3 > narg) utils::missing_cmd_args(FLERR,"dump image bond", error);
       if (atom->nbondtypes == 0)
-        error->all(FLERR,"Dump image bond not allowed with no bond types");
+        error->all(FLERR, iarg, "Dump image bond not allowed with no bond types defined");
       bondflag = YES;
       if (strcmp(arg[iarg+1],"none") == 0) bondflag = NO;
       else if (strcmp(arg[iarg+1],"atom") == 0) bcolor = ATOM;
       else if (strcmp(arg[iarg+1],"type") == 0) bcolor = TYPE;
-      else error->all(FLERR,"Illegal dump image command");
+      else error->all(FLERR, iarg + 1, "Unknown dump image bond color setting {}", arg[iarg + 1]);
       if (!islower(arg[iarg+2][0])) {
           bdiam = NUMERIC;
           bdiamvalue = utils::numeric(FLERR,arg[iarg+2],false,lmp);
-          if (bdiamvalue <= 0.0) error->all(FLERR,"Illegal dump image command");
+          if (bdiamvalue <= 0.0)
+            error->all(FLERR, iarg + 2,"Illegal dump image bond diameter value {}", bdiamvalue);
       } else if (strcmp(arg[iarg+2],"atom") == 0) bdiam = ATOM;
       else if (strcmp(arg[iarg+2],"type") == 0) bdiam = TYPE;
       else if (strcmp(arg[iarg+2],"none") == 0) bondflag = NO;
-      else error->all(FLERR,"Illegal dump image command");
+      else error->all(FLERR, iarg + 2, "Unknown dump image bond diameter setting {}", arg[iarg+2]);
       iarg += 3;
 
+    } else if (strcmp(arg[iarg],"grid") == 0) {
+      if (iarg+2 > narg) utils::missing_cmd_args(FLERR,"dump image grid", error);
+      gridflag = YES;
+
+      char *id;
+      int igrid,idata,index;
+      int iflag = utils::check_grid_reference((char *) "Dump image", arg[iarg+1], nevery, id,
+                                              igrid,idata,index,lmp);
+      if (iflag < 0)
+        error->all(FLERR, iarg+1, "Invalid grid reference {} in dump image command", arg[iarg+1]);
+
+      if (iflag == ArgInfo::COMPUTE) {
+        delete[] id_grid_compute;
+        id_grid_compute = utils::strdup(id);
+      } else if (iflag == ArgInfo::FIX) {
+        delete[] id_grid_fix;
+        id_grid_fix = utils::strdup(id);
+      }
+      delete[] id;
+      grid_igrid = igrid;
+      grid_idata = idata;
+      grid_index = index;
+      iarg += 2;
 
     } else if (strcmp(arg[iarg],"line") == 0) {
-      if (iarg+3 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+3 > narg) utils::missing_cmd_args(FLERR,"dump image line", error);
       lineflag = YES;
       if (strcmp(arg[iarg+1],"type") == 0) lcolor = TYPE;
       else error->all(FLERR,"Illegal dump image command");
@@ -186,7 +216,7 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
       iarg += 3;
 
     } else if (strcmp(arg[iarg],"tri") == 0) {
-      if (iarg+4 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+4 > narg) utils::missing_cmd_args(FLERR,"dump image tri", error);
       triflag = YES;
       if (strcmp(arg[iarg+1],"type") == 0) tcolor = TYPE;
       else error->all(FLERR,"Illegal dump image command");
@@ -195,7 +225,7 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
       iarg += 4;
 
     } else if (strcmp(arg[iarg],"body") == 0) {
-      if (iarg+4 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+4 > narg) utils::missing_cmd_args(FLERR,"dump image body", error);
       bodyflag = YES;
       if (strcmp(arg[iarg+1],"type") == 0) bodycolor = TYPE;
       else error->all(FLERR,"Illegal dump image command");
@@ -204,7 +234,7 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
       iarg += 4;
 
     } else if (strcmp(arg[iarg],"fix") == 0) {
-      if (iarg+5 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+5 > narg) utils::missing_cmd_args(FLERR,"dump image fix", error);
       fixflag = YES;
       fixID = arg[iarg+1];
       if (strcmp(arg[iarg+2],"type") == 0) fixcolor = TYPE;
@@ -214,70 +244,80 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
       iarg += 5;
 
     } else if (strcmp(arg[iarg],"size") == 0) {
-      if (iarg+3 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+3 > narg) utils::missing_cmd_args(FLERR,"dump image size", error);
       int width = utils::inumeric(FLERR,arg[iarg+1],false,lmp);
       int height = utils::inumeric(FLERR,arg[iarg+2],false,lmp);
-      if (width <= 0 || height <= 0)
-        error->all(FLERR,"Illegal dump image command");
-      image->width = width;
-      image->height = height;
+      if (width <= 0 || height <= 0) error->all(FLERR,"Illegal dump image command");
+      if (image->fsaa) {
+        image->width = width*2;
+        image->height = height*2;
+      } else {
+        image->width = width;
+        image->height = height;
+      }
       iarg += 3;
 
     } else if (strcmp(arg[iarg],"view") == 0) {
-      if (iarg+3 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+3 > narg) utils::missing_cmd_args(FLERR,"dump image view", error);
       if (utils::strmatch(arg[iarg+1],"^v_")) {
+        delete[] thetastr;
         thetastr = utils::strdup(arg[iarg+1]+2);
       } else {
-        double theta = utils::numeric(FLERR,arg[iarg+1],false,lmp);
+        const double theta = utils::numeric(FLERR,arg[iarg+1],false,lmp);
         if (theta < 0.0 || theta > 180.0)
           error->all(FLERR,"Invalid dump image theta value");
-        theta *= MY_PI/180.0;
-        image->theta = theta;
+        image->theta = DEG2RAD * theta;
       }
       if (utils::strmatch(arg[iarg+2],"^v_")) {
+        delete[] phistr;
         phistr = utils::strdup(arg[iarg+2]+2);
       } else {
-        double phi = utils::numeric(FLERR,arg[iarg+2],false,lmp);
-        phi *= MY_PI/180.0;
-        image->phi = phi;
+        image->phi = DEG2RAD * utils::numeric(FLERR,arg[iarg+2],false,lmp);
       }
       iarg += 3;
 
     } else if (strcmp(arg[iarg],"center") == 0) {
-      if (iarg+5 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+5 > narg) utils::missing_cmd_args(FLERR,"dump image center", error);
       if (strcmp(arg[iarg+1],"s") == 0) cflag = STATIC;
       else if (strcmp(arg[iarg+1],"d") == 0) cflag = DYNAMIC;
       else error->all(FLERR,"Illegal dump image command");
       if (utils::strmatch(arg[iarg+2],"^v_")) {
+        delete[] cxstr;
         cxstr = utils::strdup(arg[iarg+2]+2);
         cflag = DYNAMIC;
       } else cx = utils::numeric(FLERR,arg[iarg+2],false,lmp);
       if (utils::strmatch(arg[iarg+3],"^v_")) {
+        delete[] cystr;
         cystr = utils::strdup(arg[iarg+3]+2);
         cflag = DYNAMIC;
       } else cy = utils::numeric(FLERR,arg[iarg+3],false,lmp);
       if (utils::strmatch(arg[iarg+4],"^v_")) {
+        delete[] czstr;
         czstr = utils::strdup(arg[iarg+4]+2);
         cflag = DYNAMIC;
       } else cz = utils::numeric(FLERR,arg[iarg+4],false,lmp);
       iarg += 5;
 
     } else if (strcmp(arg[iarg],"up") == 0) {
-      if (iarg+4 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+4 > narg) utils::missing_cmd_args(FLERR,"dump image up", error);
       if (utils::strmatch(arg[iarg+1],"^v_")) {
+        delete[] upxstr;
         upxstr = utils::strdup(arg[iarg+1]+2);
       } else image->up[0] = utils::numeric(FLERR,arg[iarg+1],false,lmp);
       if (utils::strmatch(arg[iarg+2],"^v_")) {
+        delete[] upystr;
         upystr = utils::strdup(arg[iarg+2]+2);
       } else image->up[1] = utils::numeric(FLERR,arg[iarg+2],false,lmp);
       if (utils::strmatch(arg[iarg+3],"^v_")) {
+        delete[] upzstr;
         upzstr = utils::strdup(arg[iarg+3]+2);
       } else image->up[2] = utils::numeric(FLERR,arg[iarg+3],false,lmp);
       iarg += 4;
 
     } else if (strcmp(arg[iarg],"zoom") == 0) {
-      if (iarg+2 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+2 > narg) utils::missing_cmd_args(FLERR,"dump image zoom", error);
       if (utils::strmatch(arg[iarg+1],"^v_")) {
+        delete[] zoomstr;
         zoomstr = utils::strdup(arg[iarg+1]+2);
       } else {
         double zoom = utils::numeric(FLERR,arg[iarg+1],false,lmp);
@@ -287,14 +327,14 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
       iarg += 2;
 
     } else if (strcmp(arg[iarg],"box") == 0) {
-      if (iarg+3 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+3 > narg) utils::missing_cmd_args(FLERR,"dump image box", error);
       boxflag = utils::logical(FLERR,arg[iarg+1],false,lmp);
       boxdiam = utils::numeric(FLERR,arg[iarg+2],false,lmp);
       if (boxdiam < 0.0) error->all(FLERR,"Illegal dump image command");
       iarg += 3;
 
     } else if (strcmp(arg[iarg],"axes") == 0) {
-      if (iarg+3 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+3 > narg) utils::missing_cmd_args(FLERR,"dump image axes", error);
       axesflag = utils::logical(FLERR,arg[iarg+1],false,lmp);
       axeslen = utils::numeric(FLERR,arg[iarg+2],false,lmp);
       axesdiam = utils::numeric(FLERR,arg[iarg+3],false,lmp);
@@ -303,25 +343,42 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
       iarg += 4;
 
     } else if (strcmp(arg[iarg],"subbox") == 0) {
-      if (iarg+3 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+3 > narg) utils::missing_cmd_args(FLERR,"dump image subbox", error);
       subboxflag = utils::logical(FLERR,arg[iarg+1],false,lmp);
       subboxdiam = utils::numeric(FLERR,arg[iarg+2],false,lmp);
       if (subboxdiam < 0.0) error->all(FLERR,"Illegal dump image command");
       iarg += 3;
 
     } else if (strcmp(arg[iarg],"shiny") == 0) {
-      if (iarg+2 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+2 > narg) utils::missing_cmd_args(FLERR,"dump image shiny", error);
       double shiny = utils::numeric(FLERR,arg[iarg+1],false,lmp);
       if (shiny < 0.0 || shiny > 1.0)
         error->all(FLERR,"Illegal dump image command");
       image->shiny = shiny;
       iarg += 2;
 
+    } else if (strcmp(arg[iarg],"fsaa") == 0) {
+      if (iarg+2 > narg) utils::missing_cmd_args(FLERR,"dump image fsaa", error);
+      int aa = utils::logical(FLERR, arg[iarg+1], false, lmp);
+      if (aa) {
+        if (!image->fsaa) {
+          image->width = image->width*2;
+          image->height = image->height*2;
+        }
+      } else {
+        if (image->fsaa) {
+          image->width = image->width/2;
+          image->height = image->height/2;
+        }
+      }
+      image->fsaa = aa;
+      iarg += 2;
+
     } else if (strcmp(arg[iarg],"ssao") == 0) {
-      if (iarg+4 > narg) error->all(FLERR,"Illegal dump image command");
+      if (iarg+4 > narg) utils::missing_cmd_args(FLERR,"dump image ssao", error);
       image->ssao = utils::logical(FLERR,arg[iarg+1],false,lmp);
       int seed = utils::inumeric(FLERR,arg[iarg+2],false,lmp);
-      if (seed <= 0) error->all(FLERR,"Illegal dump image command");
+      if (seed <= 0) error->all(FLERR, iarg + 2, "Illegal dump image ssao seed {}", seed);
       image->seed = seed;
       double ssaoint = utils::numeric(FLERR,arg[iarg+3],false,lmp);
       if (ssaoint < 0.0 || ssaoint > 1.0)
@@ -335,28 +392,29 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
   // error checks and setup for lineflag, triflag, bodyflag, fixflag
 
   if (lineflag) {
-    avec_line = (AtomVecLine *) atom->style_match("line");
+    avec_line = dynamic_cast<AtomVecLine *>(atom->style_match("line"));
     if (!avec_line)
-      error->all(FLERR,"Dump image line requires atom style line");
+      error->all(FLERR, Error::NOLASTLINE, "Dump image line requires atom style line");
   }
   if (triflag) {
-    avec_tri = (AtomVecTri *) atom->style_match("tri");
+    avec_tri = dynamic_cast<AtomVecTri *>(atom->style_match("tri"));
     if (!avec_tri)
-      error->all(FLERR,"Dump image tri requires atom style tri");
+      error->all(FLERR, Error::NOLASTLINE, "Dump image tri requires atom style tri");
   }
   if (bodyflag) {
-    avec_body = (AtomVecBody *) atom->style_match("body");
+    avec_body = dynamic_cast<AtomVecBody *>(atom->style_match("body"));
     if (!avec_body)
-      error->all(FLERR,"Dump image body yes requires atom style body");
+      error->all(FLERR, Error::NOLASTLINE, "Dump image body yes requires atom style body");
   }
 
   extraflag = 0;
   if (lineflag || triflag || bodyflag) extraflag = 1;
 
   if (fixflag) {
-    int ifix = modify->find_fix(fixID);
-    if (ifix < 0) error->all(FLERR,"Fix ID for dump image does not exist");
-    fixptr = modify->fix[ifix];
+    fixptr = modify->get_fix_by_id(fixID);
+    if (!fixptr)
+      error->all(FLERR, Error::NOLASTLINE, "Fix ID {} for dump image does not exist", fixID);
+
   }
 
   // allocate image buffer now that image size is known
@@ -417,8 +475,7 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
   // local data
 
   maxbufcopy = 0;
-  chooseghost = nullptr;
-  bufcopy = nullptr;
+  maxgrid = 0;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -426,15 +483,30 @@ DumpImage::DumpImage(LAMMPS *lmp, int narg, char **arg) :
 DumpImage::~DumpImage()
 {
   delete image;
+  output->thermo->set_image_fname("");
 
-  delete [] diamtype;
-  delete [] diamelement;
-  delete [] colortype;
-  delete [] colorelement;
-  delete [] bdiamtype;
-  delete [] bcolortype;
+  delete[] diamtype;
+  delete[] diamelement;
+  delete[] colortype;
+  delete[] colorelement;
+  delete[] bdiamtype;
+  delete[] bcolortype;
   memory->destroy(chooseghost);
   memory->destroy(bufcopy);
+  memory->destroy(gbuf);
+
+  delete[] upxstr;
+  delete[] upystr;
+  delete[] upzstr;
+  delete[] zoomstr;
+  delete[] thetastr;
+  delete[] phistr;
+  delete[] cxstr;
+  delete[] cystr;
+  delete[] czstr;
+
+  delete[] id_grid_compute;
+  delete[] id_grid_fix;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -442,75 +514,95 @@ DumpImage::~DumpImage()
 void DumpImage::init_style()
 {
   if (multifile == 0 && !multifile_override)
-    error->all(FLERR,"Dump image requires one snapshot per file");
-  if (sort_flag) error->all(FLERR,"Dump image cannot perform sorting");
+    error->all(FLERR, Error::NOLASTLINE,
+               "Dump image requires file name with '*' requesting one snapshot per file");
+  if (sort_flag) error->all(FLERR, Error::NOLASTLINE, "Dump image cannot perform sorting");
 
   DumpCustom::init_style();
 
-  // check variables
+  // for grid output, find current ptr for compute or fix
+  // check that fix frequency is acceptable
+
+  if (gridflag) {
+    if (id_grid_compute) {
+      grid_compute = modify->get_compute_by_id(id_grid_compute);
+      if (!grid_compute)
+        error->all(FLERR, Error::NOLASTLINE,
+                   "Could not find dump image grid compute ID {}", id_grid_compute);
+    } else if (id_grid_fix) {
+      grid_fix = modify->get_fix_by_id(id_grid_fix);
+      if (!grid_fix)
+        error->all(FLERR, Error::NOLASTLINE, "Could not find dump image fix ID {}",id_grid_fix);
+      if (nevery % grid_fix->peratom_freq)
+        error->all(FLERR, Error::NOLASTLINE, "Dump image and grid fix {} not computed at "
+                   "compatible times{}", id_grid_fix, utils::errorurl(7));
+    }
+  }
+
+  // check image variables
 
   if (thetastr) {
     thetavar = input->variable->find(thetastr);
     if (thetavar < 0)
-      error->all(FLERR,"Variable name for dump image theta does not exist");
+      error->all(FLERR, Error::NOLASTLINE, "Variable name for dump image theta does not exist");
     if (!input->variable->equalstyle(thetavar))
-      error->all(FLERR,"Variable for dump image theta is invalid style");
+      error->all(FLERR, Error::NOLASTLINE, "Variable for dump image theta is invalid style");
   }
   if (phistr) {
     phivar = input->variable->find(phistr);
     if (phivar < 0)
-      error->all(FLERR,"Variable name for dump image phi does not exist");
+      error->all(FLERR, Error::NOLASTLINE, "Variable name for dump image phi does not exist");
     if (!input->variable->equalstyle(phivar))
-      error->all(FLERR,"Variable for dump image phi is invalid style");
+      error->all(FLERR, Error::NOLASTLINE, "Variable for dump image phi is invalid style");
   }
   if (cxstr) {
     cxvar = input->variable->find(cxstr);
     if (cxvar < 0)
-      error->all(FLERR,"Variable name for dump image center does not exist");
+      error->all(FLERR, Error::NOLASTLINE, "Variable name for dump image center does not exist");
     if (!input->variable->equalstyle(cxvar))
-      error->all(FLERR,"Variable for dump image center is invalid style");
+      error->all(FLERR, Error::NOLASTLINE, "Variable for dump image center is invalid style");
   }
   if (cystr) {
     cyvar = input->variable->find(cystr);
     if (cyvar < 0)
-      error->all(FLERR,"Variable name for dump image center does not exist");
+      error->all(FLERR, Error::NOLASTLINE, "Variable name for dump image center does not exist");
     if (!input->variable->equalstyle(cyvar))
-      error->all(FLERR,"Variable for dump image center is invalid style");
+      error->all(FLERR, Error::NOLASTLINE, "Variable for dump image center is invalid style");
   }
   if (czstr) {
     czvar = input->variable->find(czstr);
     if (czvar < 0)
-      error->all(FLERR,"Variable name for dump image center does not exist");
+      error->all(FLERR, Error::NOLASTLINE, "Variable name for dump image center does not exist");
     if (!input->variable->equalstyle(czvar))
-      error->all(FLERR,"Variable for dump image center is invalid style");
+      error->all(FLERR, Error::NOLASTLINE, "Variable for dump image center is invalid style");
   }
   if (upxstr) {
     upxvar = input->variable->find(upxstr);
     if (upxvar < 0)
-      error->all(FLERR,"Variable name for dump image center does not exist");
+      error->all(FLERR, Error::NOLASTLINE, "Variable name for dump image center does not exist");
     if (!input->variable->equalstyle(upxvar))
-      error->all(FLERR,"Variable for dump image center is invalid style");
+      error->all(FLERR, Error::NOLASTLINE, "Variable for dump image center is invalid style");
   }
   if (upystr) {
     upyvar = input->variable->find(upystr);
     if (upyvar < 0)
-      error->all(FLERR,"Variable name for dump image center does not exist");
+      error->all(FLERR, Error::NOLASTLINE, "Variable name for dump image center does not exist");
     if (!input->variable->equalstyle(upyvar))
-      error->all(FLERR,"Variable for dump image center is invalid style");
+      error->all(FLERR, Error::NOLASTLINE, "Variable for dump image center is invalid style");
   }
   if (upzstr) {
     upzvar = input->variable->find(upzstr);
     if (upzvar < 0)
-      error->all(FLERR,"Variable name for dump image center does not exist");
+      error->all(FLERR, Error::NOLASTLINE, "Variable name for dump image center does not exist");
     if (!input->variable->equalstyle(upzvar))
-      error->all(FLERR,"Variable for dump image center is invalid style");
+      error->all(FLERR, Error::NOLASTLINE, "Variable for dump image center is invalid style");
   }
   if (zoomstr) {
     zoomvar = input->variable->find(zoomstr);
     if (zoomvar < 0)
-      error->all(FLERR,"Variable name for dump image zoom does not exist");
+      error->all(FLERR, Error::NOLASTLINE, "Variable name for dump image zoom does not exist");
     if (!input->variable->equalstyle(zoomvar))
-      error->all(FLERR,"Variable for dump image zoom is invalid style");
+      error->all(FLERR, Error::NOLASTLINE, "Variable for dump image zoom is invalid style");
   }
 
   // set up type -> element mapping
@@ -519,7 +611,7 @@ void DumpImage::init_style()
     for (int i = 1; i <= ntypes; i++) {
       colorelement[i] = image->element2color(typenames[i]);
       if (colorelement[i] == nullptr)
-        error->all(FLERR,"Invalid dump image element name");
+        error->all(FLERR, Error::NOLASTLINE, "Invalid dump image element name");
     }
   }
 
@@ -527,7 +619,7 @@ void DumpImage::init_style()
     for (int i = 1; i <= ntypes; i++) {
       diamelement[i] = image->element2diam(typenames[i]);
       if (diamelement[i] == 0.0)
-        error->all(FLERR,"Invalid dump image element name");
+        error->all(FLERR, Error::NOLASTLINE, "Invalid dump image element name");
     }
   }
 }
@@ -556,7 +648,7 @@ void DumpImage::write()
     memory->create(buf,maxbuf*size_one,"dump:buf");
   }
 
-  // pack buf with color & diameter
+  // pack atom buf with color & diameter
 
   pack(nullptr);
 
@@ -576,7 +668,130 @@ void DumpImage::write()
     two[1] = hi;
     MPI_Allreduce(two,twoall,2,MPI_DOUBLE,MPI_MAX,world);
     int flag = image->map_minmax(0,-twoall[0],twoall[1]);
-    if (flag) error->all(FLERR,"Invalid color map min/max values");
+    if (flag) error->all(FLERR,"Invalid atom color map min/max values");
+  }
+
+  // pack grid gbuf with grid cell values
+  // ngrid = # of grid cells this proc owns
+
+  if (gridflag) {
+    if (domain->dimension == 2) {
+      if (grid_compute)
+        grid2d = (Grid2d *) grid_compute->get_grid_by_index(grid_igrid);
+      else if (grid_fix)
+        grid2d = (Grid2d *) grid_fix->get_grid_by_index(grid_igrid);
+      grid2d->get_size(nxgrid,nygrid);
+      grid2d->get_bounds_owned(nxlo_in,nxhi_in,nylo_in,nyhi_in);
+      ngrid = (nxhi_in-nxlo_in+1) * (nyhi_in-nylo_in+1);
+    } else {
+      if (grid_compute)
+        grid3d = (Grid3d *) grid_compute->get_grid_by_index(grid_igrid);
+      else if (grid_fix)
+        grid3d = (Grid3d *) grid_fix->get_grid_by_index(grid_igrid);
+      grid3d->get_size(nxgrid,nygrid,nzgrid);
+      grid3d->get_bounds_owned(nxlo_in,nxhi_in,nylo_in,nyhi_in,nzlo_in,nzhi_in);
+      ngrid = (nxhi_in-nxlo_in+1) * (nyhi_in-nylo_in+1) * (nzhi_in-nzlo_in+1);
+    }
+
+    // ensure gbuf is large enough
+
+    if (ngrid > maxgrid) {
+      memory->destroy(gbuf);
+      maxgrid = ngrid;
+      memory->create(gbuf,maxgrid,"dump/image:gbuf");
+    }
+
+    // invoke Compute for per-grid quantities
+    // cannot invoke before first run, otherwise invoke if necessary
+
+    if (grid_compute) {
+      if (!grid_compute->is_initialized())
+        error->all(FLERR,"Grid compute ID {} used in dump image cannot be invoked "
+                   "before initialization by a run", grid_compute->id);
+      if (!(grid_compute->invoked_flag & Compute::INVOKED_PERGRID)) {
+        grid_compute->compute_pergrid();
+        grid_compute->invoked_flag |= Compute::INVOKED_PERGRID;
+      }
+    }
+
+    // access grid data and load gbuf
+
+    if (domain->dimension == 2) {
+      if (grid_index == 0) {
+        double **vec2d;
+        if (grid_compute)
+          vec2d = (double **)
+            grid_compute->get_griddata_by_index(grid_idata);
+        else if (grid_fix)
+          vec2d = (double **)
+          grid_fix->get_griddata_by_index(grid_idata);
+        int n = 0;
+        for (int iy = nylo_in; iy <= nyhi_in; iy++)
+          for (int ix = nxlo_in; ix <= nxhi_in; ix++)
+            gbuf[n++] = vec2d[iy][ix];
+      } else {
+        double ***array2d;
+        if (grid_compute)
+          array2d = (double ***)
+            grid_compute->get_griddata_by_index(grid_idata);
+        else if (grid_fix)
+          array2d = (double ***)
+            grid_fix->get_griddata_by_index(grid_idata);
+        int index = grid_index - 1;
+        int n = 0;
+        for (int iy = nylo_in; iy <= nyhi_in; iy++)
+          for (int ix = nxlo_in; ix <= nxhi_in; ix++)
+            gbuf[n++] = array2d[iy][ix][index];
+      }
+
+    } else if (domain->dimension == 3) {
+      if (grid_index == 0) {
+        double ***vec3d;
+        if (grid_compute)
+          vec3d = (double ***)
+            grid_compute->get_griddata_by_index(grid_idata);
+        else if (grid_fix)
+          vec3d = (double ***)
+            grid_fix->get_griddata_by_index(grid_idata);
+        int n = 0;
+        for (int iz = nzlo_in; iz <= nzhi_in; iz++)
+          for (int iy = nylo_in; iy <= nyhi_in; iy++)
+            for (int ix = nxlo_in; ix <= nxhi_in; ix++)
+              gbuf[n++] = vec3d[iz][iy][ix];
+
+        }
+    } else {
+      double ****array3d;
+      if (grid_compute)
+        array3d = (double ****)
+          grid_compute->get_griddata_by_index(grid_idata);
+      else if (grid_fix)
+        array3d = (double ****)
+          grid_fix->get_griddata_by_index(grid_idata);
+      int index = grid_index - 1;
+      int n = 0;
+      for (int iz = nzlo_in; iz <= nzhi_in; iz++)
+        for (int iy = nylo_in; iy <= nyhi_in; iy++)
+          for (int ix = nxlo_in; ix <= nxhi_in; ix++)
+            gbuf[n++] = array3d[iz][iy][ix][index];
+      }
+  }
+
+  // set minmax color range if using dynamic grid color map
+
+  if (gridflag && image->map_dynamic(1)) {
+    double two[2],twoall[2];
+    double lo = BIG;
+    double hi = -BIG;
+    for (int i = 0; i < ngrid; i++) {
+      lo = MIN(lo,gbuf[i]);
+      hi = MAX(hi,gbuf[i]);
+    }
+    two[0] = -lo;
+    two[1] = hi;
+    MPI_Allreduce(two,twoall,2,MPI_DOUBLE,MPI_MAX,world);
+    int flag = image->map_minmax(1,-twoall[0],twoall[1]);
+    if (flag) error->all(FLERR,"Invalid grid color map min/max values");
   }
 
   // create image on each proc, then merge them
@@ -594,6 +809,12 @@ void DumpImage::write()
     if (multifile) {
       fclose(fp);
       fp = nullptr;
+
+      // cache last dump image filename for access through library interface.
+      // update only *after* the file has been written so there will be no invalid read.
+      // have to recreate the substitution done within openfile().
+
+      output->thermo->set_image_fname(utils::star_subst(filename, update->ntimestep, padflag));
     }
   }
 }
@@ -652,18 +873,13 @@ void DumpImage::view_params()
   // view direction theta and phi
 
   if (thetastr) {
-    double theta = input->variable->compute_equal(thetavar);
+    const double theta = input->variable->compute_equal(thetavar);
     if (theta < 0.0 || theta > 180.0)
       error->all(FLERR,"Invalid dump image theta value");
-    theta *= MY_PI/180.0;
-    image->theta = theta;
+    image->theta = DEG2RAD * theta;
   }
 
-  if (phistr) {
-    double phi = input->variable->compute_equal(phivar);
-    phi *= MY_PI/180.0;
-    image->phi = phi;
-  }
+  if (phistr) image->phi = DEG2RAD * input->variable->compute_equal(phivar);
 
   // up vector
 
@@ -682,8 +898,9 @@ void DumpImage::view_params()
 }
 
 /* ----------------------------------------------------------------------
-   create image for atoms on this proc
-   every pixel has depth
+   create image for all data this proc owns
+   all procs draw simulation box edges if requested
+   every drawn pixel has depth so merge can decide which to keep
 ------------------------------------------------------------------------- */
 
 void DumpImage::create_image()
@@ -745,6 +962,64 @@ void DumpImage::create_image()
 
       m += size_one;
     }
+  }
+
+  // render my grid cells
+  // 2 triangles for 2d rectangle, 12 triangles for 3d cube surface
+  // grid_cell_corners_2d/3d calculates orthogonal vs triclinic corner pts
+  // for 3d, outward normals on all 6 faces
+
+  if (gridflag) {
+
+    // reset lighting for flat surfaces to make them brighter
+
+    image->ambientColor[0] = image->ambientColor[1] = image->ambientColor[2] = 0.9;
+    image->keyLightColor[0] = image->keyLightColor[1] = image->keyLightColor[2] = 0.3;
+    image->fillLightColor[0] = image->fillLightColor[1] = image->fillLightColor[2] = 0.3;
+    image->backLightColor[0] = image->backLightColor[1] = image->backLightColor[2] = 0.3;
+
+    int n = 0;
+    if (domain->dimension == 2) {
+      for (int iy = nylo_in; iy <= nyhi_in; iy++)
+        for (int ix = nxlo_in; ix <= nxhi_in; ix++) {
+          grid_cell_corners_2d(ix,iy);
+          color = image->map_value2color(1,gbuf[n++]);
+          image->draw_triangle(gcorners[0],gcorners[1],gcorners[3],color);
+          image->draw_triangle(gcorners[0],gcorners[3],gcorners[2],color);
+        }
+    } else {
+      for (int iz = nzlo_in; iz <= nzhi_in; iz++)
+        for (int iy = nylo_in; iy <= nyhi_in; iy++)
+          for (int ix = nxlo_in; ix <= nxhi_in; ix++) {
+            grid_cell_corners_3d(ix,iy,iz);
+            color = image->map_value2color(1,gbuf[n++]);
+            // lower x face
+            image->draw_triangle(gcorners[0],gcorners[4],gcorners[6],color);
+            image->draw_triangle(gcorners[0],gcorners[6],gcorners[2],color);
+            // upper x face
+            image->draw_triangle(gcorners[1],gcorners[5],gcorners[7],color);
+            image->draw_triangle(gcorners[1],gcorners[7],gcorners[3],color);
+            // lower y face
+            image->draw_triangle(gcorners[0],gcorners[1],gcorners[5],color);
+            image->draw_triangle(gcorners[0],gcorners[5],gcorners[4],color);
+            // upper y face
+            image->draw_triangle(gcorners[2],gcorners[6],gcorners[7],color);
+            image->draw_triangle(gcorners[2],gcorners[7],gcorners[3],color);
+            // lower z face
+            image->draw_triangle(gcorners[0],gcorners[2],gcorners[3],color);
+            image->draw_triangle(gcorners[0],gcorners[3],gcorners[1],color);
+            // upper z face
+            image->draw_triangle(gcorners[4],gcorners[5],gcorners[7],color);
+            image->draw_triangle(gcorners[4],gcorners[7],gcorners[6],color);
+          }
+    }
+
+    // restore lighting for curved objects
+
+    image->ambientColor[0] = image->ambientColor[1] = image->ambientColor[2] = 0.0;
+    image->keyLightColor[0] = image->keyLightColor[1] = image->keyLightColor[2] = 0.9;
+    image->fillLightColor[0] = image->fillLightColor[1] = image->fillLightColor[2] = 0.45;
+    image->backLightColor[0] = image->backLightColor[1] = image->backLightColor[2] = 0.9;
   }
 
   // render atoms that are lines
@@ -837,7 +1112,7 @@ void DumpImage::create_image()
         color = colortype[itype];
       }
 
-      ibonus = body[i];
+      ibonus = body[j];
       n = bptr->image(ibonus,bodyflag1,bodyflag2,bodyvec,bodyarray);
       for (k = 0; k < n; k++) {
         if (bodyvec[k] == SPHERE)
@@ -898,7 +1173,7 @@ void DumpImage::create_image()
       }
     }
 
-    comm->forward_comm_dump(this);
+    comm->forward_comm(this);
 
     for (i = 0; i < nchoose; i++) {
       atom1 = clist[i];
@@ -1143,6 +1418,86 @@ void DumpImage::create_image()
 
 /* ---------------------------------------------------------------------- */
 
+void DumpImage::grid_cell_corners_2d(int ix, int iy)
+{
+  double *boxlo = domain->boxlo;
+  double *prd = domain->prd;
+
+  if (!domain->triclinic) {
+    double xdelta = prd[0] / nxgrid;
+    double ydelta = prd[1] / nygrid;
+
+    int n = 0;
+    for (int y = 0; y < 2; y++)
+      for (int x = 0; x < 2; x++) {
+        gcorners[n][0] = boxlo[0] + (ix+x) * xdelta;
+        gcorners[n][1] = boxlo[1] + (iy+y) * ydelta;
+        gcorners[n][2] = 0.0;
+        n++;
+      }
+
+  } else {
+    double lamda[3];
+    lamda[2] = 0.0;
+
+    double dx = 1.0 / nxgrid;
+    double dy = 1.0 / nygrid;
+
+    int n = 0;
+    for (int y = 0; y < 2; y++)
+      for (int x = 0; x < 2; x++) {
+        lamda[0] = (ix+x) * dx;
+        lamda[1] = (iy+y) * dy;
+        domain->lamda2x(lamda,gcorners[n]);
+        n++;
+      }
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+
+void DumpImage::grid_cell_corners_3d(int ix, int iy, int iz)
+{
+  double *boxlo = domain->boxlo;
+  double *prd = domain->prd;
+
+  if (!domain->triclinic) {
+    double xdelta = prd[0] / nxgrid;
+    double ydelta = prd[1] / nygrid;
+    double zdelta = prd[2] / nzgrid;
+
+    int n = 0;
+    for (int z = 0; z < 2; z++)
+      for (int y = 0; y < 2; y++)
+        for (int x = 0; x < 2; x++) {
+          gcorners[n][0] = boxlo[0] + (ix+x) * xdelta;
+          gcorners[n][1] = boxlo[1] + (iy+y) * ydelta;
+          gcorners[n][2] = boxlo[2] + (iz+z) * zdelta;
+          n++;
+        }
+
+  } else {
+    double lamda[3];
+
+    double dx = 1.0 / nxgrid;
+    double dy = 1.0 / nygrid;
+    double dz = 1.0 / nzgrid;
+
+    int n = 0;
+    for (int z = 0; z < 2; z++)
+      for (int y = 0; y < 2; y++)
+        for (int x = 0; x < 2; x++) {
+          lamda[0] = (ix+x) * dx;
+          lamda[1] = (iy+y) * dy;
+          lamda[2] = (iz+z) * dz;
+          domain->lamda2x(lamda,gcorners[n]);
+          n++;
+        }
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+
 int DumpImage::pack_forward_comm(int n, int *list, double *buf,
                                  int /*pbc_flag*/, int * /*pbc*/)
 {
@@ -1197,13 +1552,13 @@ int DumpImage::modify_param(int narg, char **arg)
   if (strcmp(arg[0],"acolor") == 0) {
     if (narg < 3) error->all(FLERR,"Illegal dump_modify command");
     int nlo,nhi;
-    utils::bounds(FLERR,arg[1],1,atom->ntypes,nlo,nhi,error);
+    utils::bounds_typelabel(FLERR,arg[1],1,atom->ntypes,nlo,nhi,lmp,Atom::ATOM);
 
     // get list of colors
+    // assign colors in round-robin fashion to types
+
     auto colors = Tokenizer(arg[2],"/").as_vector();
     const int ncolors = colors.size();
-
-    // assign colors in round-robin fashion to types
 
     int m = 0;
     for (int i = nlo; i <= nhi; i++) {
@@ -1218,14 +1573,14 @@ int DumpImage::modify_param(int narg, char **arg)
   if (strcmp(arg[0],"adiam") == 0) {
     if (narg < 3) error->all(FLERR,"Illegal dump_modify command");
     int nlo,nhi;
-    utils::bounds(FLERR,arg[1],1,atom->ntypes,nlo,nhi,error);
+    utils::bounds_typelabel(FLERR,arg[1],1,atom->ntypes,nlo,nhi,lmp,Atom::ATOM);
     double diam = utils::numeric(FLERR,arg[2],false,lmp);
     if (diam <= 0.0) error->all(FLERR,"Illegal dump_modify command");
     for (int i = nlo; i <= nhi; i++) diamtype[i] = diam;
     return 3;
   }
 
-  if (strcmp(arg[0],"amap") == 0) {
+  if ((strcmp(arg[0],"amap") == 0) || (strcmp(arg[0],"gmap") == 0)) {
     if (narg < 6) error->all(FLERR,"Illegal dump_modify command");
     if (strlen(arg[3]) != 2) error->all(FLERR,"Illegal dump_modify command");
     int factor = 0;
@@ -1237,7 +1592,9 @@ int DumpImage::modify_param(int narg, char **arg)
     if (nentry < 1) error->all(FLERR,"Illegal dump_modify command");
     n = 6 + factor*nentry;
     if (narg < n) error->all(FLERR,"Illegal dump_modify command");
-    int flag = image->map_reset(0,n-1,&arg[1]);
+    int flag;
+    if (strcmp(arg[0],"amap") == 0) flag = image->map_reset(0,n-1,&arg[1]);
+    if (strcmp(arg[0],"gmap") == 0) flag = image->map_reset(1,n-1,&arg[1]);
     if (flag) error->all(FLERR,"Illegal dump_modify command");
     return n;
   }
@@ -1247,34 +1604,21 @@ int DumpImage::modify_param(int narg, char **arg)
     if (atom->nbondtypes == 0)
       error->all(FLERR,"Dump modify bcolor not allowed with no bond types");
     int nlo,nhi;
-    utils::bounds(FLERR,arg[1],1,atom->nbondtypes,nlo,nhi,error);
+    utils::bounds_typelabel(FLERR,arg[1],1,atom->nbondtypes,nlo,nhi,lmp,Atom::BOND);
 
-    // ptrs = list of ncount colornames separated by '/'
+    // process list of ncount colornames separated by '/'
+    // assign colors in round-robin fashion to bond types
 
-    int ncount = 1;
-    char *nextptr;
-    char *ptr = arg[2];
-    while ((nextptr = strchr(ptr,'/'))) {
-      ptr = nextptr + 1;
-      ncount++;
-    }
-    char **ptrs = new char*[ncount+1];
-    ncount = 0;
-    ptrs[ncount++] = strtok(arg[2],"/");
-    while ((ptrs[ncount++] = strtok(nullptr,"/")));
-    ncount--;
-
-    // assign each of ncount colors in round-robin fashion to types
+    auto colors = Tokenizer(arg[2],"/").as_vector();
+    const int ncolors = colors.size();
 
     int m = 0;
     for (int i = nlo; i <= nhi; i++) {
-      bcolortype[i] = image->color2rgb(ptrs[m%ncount]);
+      bcolortype[i] = image->color2rgb(colors[m%ncolors].c_str());
       if (bcolortype[i] == nullptr)
         error->all(FLERR,"Invalid color in dump_modify command");
       m++;
     }
-
-    delete [] ptrs;
     return 3;
   }
 
@@ -1283,7 +1627,7 @@ int DumpImage::modify_param(int narg, char **arg)
     if (atom->nbondtypes == 0)
       error->all(FLERR,"Dump modify bdiam not allowed with no bond types");
     int nlo,nhi;
-    utils::bounds(FLERR,arg[1],1,atom->nbondtypes,nlo,nhi,error);
+    utils::bounds_typelabel(FLERR,arg[1],1,atom->nbondtypes,nlo,nhi,lmp,Atom::BOND);
     double diam = utils::numeric(FLERR,arg[2],false,lmp);
     if (diam <= 0.0) error->all(FLERR,"Illegal dump_modify command");
     for (int i = nlo; i <= nhi; i++) bdiamtype[i] = diam;

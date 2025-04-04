@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -18,33 +18,29 @@
 
 #include "pair_lubricateU.h"
 
-#include <cmath>
-#include <cstring>
 #include "atom.h"
 #include "comm.h"
-#include "force.h"
-#include "neighbor.h"
-#include "neigh_list.h"
 #include "domain.h"
-#include "update.h"
-#include "math_const.h"
-#include "modify.h"
+#include "error.h"
 #include "fix.h"
 #include "fix_wall.h"
+#include "force.h"
 #include "input.h"
-#include "variable.h"
+#include "math_const.h"
 #include "memory.h"
-#include "error.h"
+#include "modify.h"
+#include "neigh_list.h"
+#include "neighbor.h"
+#include "update.h"
+#include "variable.h"
 
+#include <cmath>
+#include <cstring>
 
 using namespace LAMMPS_NS;
 using namespace MathConst;
 
-#define TOL 1E-4   // tolerance for conjugate gradient
-
-// same as fix_wall.cpp
-
-enum{EDGE,CONSTANT,VARIABLE};
+static constexpr double TOL = 1e-4;   // tolerance for conjugate gradient
 
 /* ---------------------------------------------------------------------- */
 
@@ -249,7 +245,7 @@ void PairLubricateU::stage_one()
 
   // set velocities for ghost particles
 
-  comm->forward_comm_pair(this);
+  comm->forward_comm(this);
 
   // Find initial residual
 
@@ -284,7 +280,7 @@ void PairLubricateU::stage_one()
 
     // set velocities for ghost particles
 
-    comm->forward_comm_pair(this);
+    comm->forward_comm(this);
 
     compute_RU();
 
@@ -343,7 +339,7 @@ void PairLubricateU::stage_one()
 
   // set velocities for ghost particles
 
-  comm->forward_comm_pair(this);
+  comm->forward_comm(this);
 
   // Find actual particle's velocities from relative velocities
   // Only non-zero component of fluid's vel : vx=gdot*y and wz=-gdot/2
@@ -433,7 +429,7 @@ void PairLubricateU::stage_two(double **x)
 
   // set velocities for ghost particles
 
-  comm->forward_comm_pair(this);
+  comm->forward_comm(this);
 
   // Find initial residual
 
@@ -468,7 +464,7 @@ void PairLubricateU::stage_two(double **x)
 
     // set velocities for ghost particles
 
-    comm->forward_comm_pair(this);
+    comm->forward_comm(this);
 
     compute_RU(x);
 
@@ -527,7 +523,7 @@ void PairLubricateU::stage_two(double **x)
 
   // set velocities for ghost particles
 
-  comm->forward_comm_pair(this);
+  comm->forward_comm(this);
 
   // Compute the viscosity/pressure
 
@@ -595,7 +591,7 @@ void PairLubricateU::compute_Fh(double **x)
          for (int m = 0; m < wallfix->nwall; m++) {
            int dim = wallfix->wallwhich[m] / 2;
            int side = wallfix->wallwhich[m] % 2;
-           if (wallfix->xstyle[m] == VARIABLE) {
+           if (wallfix->xstyle[m] == FixWall::VARIABLE) {
              wallcoord = input->variable->compute_equal(wallfix->xindex[m]);
            }
            else wallcoord = wallfix->coord0[m];
@@ -827,7 +823,7 @@ void PairLubricateU::compute_RU()
          for (int m = 0; m < wallfix->nwall; m++) {
            int dim = wallfix->wallwhich[m] / 2;
            int side = wallfix->wallwhich[m] % 2;
-           if (wallfix->xstyle[m] == VARIABLE) {
+           if (wallfix->xstyle[m] == FixWall::VARIABLE) {
              wallcoord = input->variable->compute_equal(wallfix->xindex[m]);
            }
            else wallcoord = wallfix->coord0[m];
@@ -1098,7 +1094,7 @@ void PairLubricateU::compute_RU(double **x)
          for (int m = 0; m < wallfix->nwall; m++) {
            int dim = wallfix->wallwhich[m] / 2;
            int side = wallfix->wallwhich[m] % 2;
-           if (wallfix->xstyle[m] == VARIABLE) {
+           if (wallfix->xstyle[m] == FixWall::VARIABLE) {
              wallcoord = input->variable->compute_equal(wallfix->xindex[m]);
            }
            else wallcoord = wallfix->coord0[m];
@@ -1730,7 +1726,7 @@ void PairLubricateU::settings(int narg, char **arg)
 void PairLubricateU::coeff(int narg, char **arg)
 {
   if (narg != 2 && narg != 4)
-    error->all(FLERR,"Incorrect args for pair coefficients");
+    error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 
   if (!allocated) allocate();
 
@@ -1755,7 +1751,7 @@ void PairLubricateU::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -1764,12 +1760,14 @@ void PairLubricateU::coeff(int narg, char **arg)
 
 void PairLubricateU::init_style()
 {
-  if (!atom->sphere_flag)
-    error->all(FLERR,"Pair lubricateU requires atom style sphere");
+  if (!atom->omega_flag)
+    error->all(FLERR,"Pair lubricateU requires atom attribute omega");
+  if (!atom->radius_flag)
+    error->all(FLERR,"Pair lubricateU requires atom attribute radius");
   if (comm->ghost_velocity == 0)
     error->all(FLERR,"Pair lubricateU requires ghost atoms store velocity");
 
-  neighbor->request(this,instance_me);
+  neighbor->add_request(this);
 
   // require that atom radii are identical within each type
   // require monodisperse system with same radii for all types
@@ -1792,18 +1790,18 @@ void PairLubricateU::init_style()
   // are re-calculated at every step.
 
   flagdeform = flagwall = 0;
-  for (int i = 0; i < modify->nfix; i++) {
-    if (strcmp(modify->fix[i]->style,"deform") == 0)
-      flagdeform = 1;
-    else if (strstr(modify->fix[i]->style,"wall") != nullptr) {
-      if (flagwall)
-        error->all(FLERR,
-                   "Cannot use multiple fix wall commands with "
-                   "pair lubricateU");
-      flagwall = 1; // Walls exist
-      wallfix = (FixWall *) modify->fix[i];
-      if (wallfix->xflag) flagwall = 2; // Moving walls exist
-    }
+  wallfix = nullptr;
+
+  if (modify->get_fix_by_style("^deform").size() > 0) flagdeform = 1;
+  auto fixes = modify->get_fix_by_style("^wall");
+  if (fixes.size() > 1)
+    error->all(FLERR, "Cannot use multiple fix wall commands with pair lubricateU");
+  else if (fixes.size() == 1) {
+    wallfix = dynamic_cast<FixWall *>(fixes[0]);
+    if (!wallfix)
+      error->all(FLERR, "Fix {} is not compatible with pair lubricateU", fixes[0]->style);
+    flagwall = 1;
+    if (wallfix->xflag) flagwall = 2; // Moving walls exist
   }
 
   // set the isotropic constants depending on the volume fraction
@@ -1819,7 +1817,7 @@ void PairLubricateU::init_style()
     for (int m = 0; m < wallfix->nwall; m++) {
       int dim = wallfix->wallwhich[m] / 2;
       int side = wallfix->wallwhich[m] % 2;
-      if (wallfix->xstyle[m] == VARIABLE) {
+      if (wallfix->xstyle[m] == FixWall::VARIABLE) {
         wallfix->xindex[m] = input->variable->find(wallfix->xstr[m]);
         //Since fix->wall->init happens after pair->init_style
         wallcoord = input->variable->compute_equal(wallfix->xindex[m]);

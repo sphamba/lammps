@@ -52,12 +52,12 @@ int TersoffT::init(const int ntypes, const int nlocal, const int nall, const int
                    const double* c, const double* d, const double* h, const double* gamma,
                    const double* beta, const double* powern, const double* host_cutsq)
 {
-  int oldparam=-1;
   int onetype=-1;
   int onetype3=0;
   int spq=0;
-  int mtypes=0;
   #ifdef USE_OPENCL
+  int oldparam=-1;
+  int mtypes=0;
   for (int ii=1; ii<ntypes; ii++) {
     const int i=host_map[ii];
     for (int jj=1; jj<ntypes; jj++) {
@@ -260,7 +260,7 @@ int TersoffT::loop(const int eflag, const int vflag, const int evatom,
 
   // re-allocate zetaij if necessary
   int nall = this->_nall;
-  if (nall*this->nbor->max_nbors() > _zetaij.cols()) {
+  if (nall*this->nbor->max_nbors() > (int)_zetaij.cols()) {
     int _nmax=static_cast<int>(static_cast<double>(nall)*1.10);
     _zetaij.clear();
     _zetaij_eng.clear();

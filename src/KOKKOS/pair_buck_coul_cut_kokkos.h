@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -37,13 +37,13 @@ class PairBuckCoulCutKokkos : public PairBuckCoulCut {
   typedef DeviceType device_type;
   typedef ArrayTypes<DeviceType> AT;
   PairBuckCoulCutKokkos(class LAMMPS *);
-  ~PairBuckCoulCutKokkos();
+  ~PairBuckCoulCutKokkos() override;
 
-  void compute(int, int);
+  void compute(int, int) override;
 
-  void settings(int, char **);
-  void init_style();
-  double init_one(int, int);
+  void settings(int, char **) override;
+  void init_style() override;
+  double init_one(int, int) override;
 
   struct params_buck_coul{
     KOKKOS_INLINE_FUNCTION
@@ -110,17 +110,20 @@ class PairBuckCoulCutKokkos : public PairBuckCoulCut {
   double special_lj[4], special_coul[4];
   double qqrd2e;
 
-  void allocate();
+  void allocate() override;
 
-  friend struct PairComputeFunctor<PairBuckCoulCutKokkos,FULL,true>;
+  friend struct PairComputeFunctor<PairBuckCoulCutKokkos,FULL,true,0>;
+  friend struct PairComputeFunctor<PairBuckCoulCutKokkos,FULL,true,1>;
   friend struct PairComputeFunctor<PairBuckCoulCutKokkos,HALF,true>;
   friend struct PairComputeFunctor<PairBuckCoulCutKokkos,HALFTHREAD,true>;
-  friend struct PairComputeFunctor<PairBuckCoulCutKokkos,FULL,false>;
+  friend struct PairComputeFunctor<PairBuckCoulCutKokkos,FULL,false,0>;
+  friend struct PairComputeFunctor<PairBuckCoulCutKokkos,FULL,false,1>;
   friend struct PairComputeFunctor<PairBuckCoulCutKokkos,HALF,false>;
   friend struct PairComputeFunctor<PairBuckCoulCutKokkos,HALFTHREAD,false>;
-  friend EV_FLOAT pair_compute_neighlist<PairBuckCoulCutKokkos,FULL,void>(PairBuckCoulCutKokkos*,NeighListKokkos<DeviceType>*);
-  friend EV_FLOAT pair_compute_neighlist<PairBuckCoulCutKokkos,HALF,void>(PairBuckCoulCutKokkos*,NeighListKokkos<DeviceType>*);
-  friend EV_FLOAT pair_compute_neighlist<PairBuckCoulCutKokkos,HALFTHREAD,void>(PairBuckCoulCutKokkos*,NeighListKokkos<DeviceType>*);
+  friend EV_FLOAT pair_compute_neighlist<PairBuckCoulCutKokkos,FULL,0>(PairBuckCoulCutKokkos*,NeighListKokkos<DeviceType>*);
+  friend EV_FLOAT pair_compute_neighlist<PairBuckCoulCutKokkos,FULL,1>(PairBuckCoulCutKokkos*,NeighListKokkos<DeviceType>*);
+  friend EV_FLOAT pair_compute_neighlist<PairBuckCoulCutKokkos,HALF>(PairBuckCoulCutKokkos*,NeighListKokkos<DeviceType>*);
+  friend EV_FLOAT pair_compute_neighlist<PairBuckCoulCutKokkos,HALFTHREAD>(PairBuckCoulCutKokkos*,NeighListKokkos<DeviceType>*);
   friend EV_FLOAT pair_compute<PairBuckCoulCutKokkos,void>(PairBuckCoulCutKokkos*,
                                                             NeighListKokkos<DeviceType>*);
   friend void pair_virial_fdotr_compute<PairBuckCoulCutKokkos>(PairBuckCoulCutKokkos*);
@@ -132,20 +135,3 @@ class PairBuckCoulCutKokkos : public PairBuckCoulCut {
 #endif
 #endif
 
-/* ERROR/WARNING messages:
-
-E: Illegal ... command
-
-Self-explanatory.  Check the input script syntax and compare to the
-documentation for the command.  You can use -echo screen as a
-command-line option when running LAMMPS to see the offending line.
-
-E: Cannot use Kokkos pair style with rRESPA inner/middle
-
-Self-explanatory.
-
-E: Cannot use chosen neighbor list style with buck/coul/cut/kk
-
-Self-explanatory.
-
-*/

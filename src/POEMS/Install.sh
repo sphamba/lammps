@@ -9,6 +9,19 @@ mode=$1
 LC_ALL=C
 export LC_ALL
 
+cat <<EOF
+WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING
+WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING
+
+ The POEMS package will be removed from LAMMPS in Summer 2025 due to lack of
+ maintenance and use of code constructs that conflict with modern C++ compilers
+ and standards.  Please contact developers@lammps.org if you have any concerns
+ about this step.
+
+WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING
+WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING-WARNING
+EOF
+
 action () {
   if (test $mode = 0) then
     rm -f ../$1
@@ -44,7 +57,7 @@ if (test $1 = 1) then
   fi
 
   if (test -e ../Makefile.package.settings) then
-    sed -i -e '/^include.*poems.*$/d' ../Makefile.package.settings
+    sed -i -e '/^[ \t]*include.*poems.*$/d' ../Makefile.package.settings
     # multiline form needed for BSD sed on Macs
     sed -i -e '4 i \
 include ..\/..\/lib\/poems\/Makefile.lammps
@@ -58,7 +71,7 @@ elif (test $1 = 0) then
   fi
 
   if (test -e ../Makefile.package.settings) then
-    sed -i -e '/^include.*poems.*$/d' ../Makefile.package.settings
+    sed -i -e '/^[ \t]*include.*poems.*$/d' ../Makefile.package.settings
   fi
 
 fi

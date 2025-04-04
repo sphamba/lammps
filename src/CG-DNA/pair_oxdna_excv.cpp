@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -20,12 +20,14 @@
 #include "atom.h"
 #include "atom_vec_ellipsoid.h"
 #include "comm.h"
+#include "constants_oxdna.h"
 #include "error.h"
 #include "force.h"
 #include "math_extra.h"
 #include "memory.h"
 #include "mf_oxdna.h"
 #include "neigh_list.h"
+#include "potential_file_reader.h"
 
 #include <cmath>
 #include <cstring>
@@ -39,6 +41,10 @@ PairOxdnaExcv::PairOxdnaExcv(LAMMPS *lmp) : Pair(lmp)
 {
   single_enable = 0;
   writedata = 1;
+
+  // set comm size needed by this Pair
+  comm_forward = 9;
+  trim_flag = 0;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -46,6 +52,10 @@ PairOxdnaExcv::PairOxdnaExcv(LAMMPS *lmp) : Pair(lmp)
 PairOxdnaExcv::~PairOxdnaExcv()
 {
   if (allocated) {
+
+    memory->destroy(nx);
+    memory->destroy(ny);
+    memory->destroy(nz);
 
     memory->destroy(setflag);
     memory->destroy(cutsq);
@@ -89,7 +99,8 @@ PairOxdnaExcv::~PairOxdnaExcv()
 void PairOxdnaExcv::compute_interaction_sites(double e1[3], double /*e2*/[3],
     double /*e3*/[3], double rs[3], double rb[3])
 {
-  double d_cs=-0.4, d_cb=+0.4;
+  double d_cs = ConstantsOxdna::get_d_cs();
+  double d_cb = ConstantsOxdna::get_d_cb();
 
   rs[0] = d_cs*e1[0];
   rs[1] = d_cs*e1[1];
@@ -108,7 +119,6 @@ void PairOxdnaExcv::compute_interaction_sites(double e1[3], double /*e2*/[3],
 
 void PairOxdnaExcv::compute(int eflag, int vflag)
 {
-
   double delf[3],delta[3],deltb[3]; // force, torque increment;
   double evdwl,fpair,factor_lj;
   double rtmp_s[3],rtmp_b[3];
@@ -118,10 +128,10 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
   // vectors COM-backbone site, COM-base site in lab frame
   double ra_cs[3],ra_cb[3];
   double rb_cs[3],rb_cb[3];
+  // Cartesian unit vectors in lab frame
+  double ax[3],ay[3],az[3];
+  double bx[3],by[3],bz[3];
 
-  // quaternions and Cartesian unit vectors in lab frame
-  double *qa,ax[3],ay[3],az[3];
-  double *qb,bx[3],by[3],bz[3];
   double *special_lj = force->special_lj;
 
   double **x = atom->x;
@@ -133,11 +143,11 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
   int newton_pair = force->newton_pair;
   int *alist,*blist,*numneigh,**firstneigh;
 
-  AtomVecEllipsoid *avec = (AtomVecEllipsoid *) atom->style_match("ellipsoid");
+  auto avec = dynamic_cast<AtomVecEllipsoid *>(atom->style_match("ellipsoid"));
   AtomVecEllipsoid::Bonus *bonus = avec->bonus;
   int *ellipsoid = atom->ellipsoid;
 
-  int a,b,ia,ib,anum,bnum,atype,btype;
+  int a,b,in,ia,ib,anum,bnum,atype,btype;
 
   evdwl = 0.0;
   ev_init(eflag,vflag);
@@ -147,6 +157,29 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
   numneigh = list->numneigh;
   firstneigh = list->firstneigh;
 
+  // loop over all local atoms, calculation of local reference frame
+  for (in = 0; in < atom->nlocal; in++) {
+
+    int n = alist[in];
+    double *qn,nx_temp[3],ny_temp[3],nz_temp[3]; // quaternion and Cartesian unit vectors in lab frame
+
+    qn=bonus[ellipsoid[n]].quat;
+    MathExtra::q_to_exyz(qn,nx_temp,ny_temp,nz_temp);
+
+    nx[n][0] = nx_temp[0];
+    nx[n][1] = nx_temp[1];
+    nx[n][2] = nx_temp[2];
+    ny[n][0] = ny_temp[0];
+    ny[n][1] = ny_temp[1];
+    ny[n][2] = ny_temp[2];
+    nz[n][0] = nz_temp[0];
+    nz[n][1] = nz_temp[1];
+    nz[n][2] = nz_temp[2];
+
+  }
+
+  comm->forward_comm(this);
+
   // loop over pair interaction neighbors of my atoms
 
   for (ia = 0; ia < anum; ia++) {
@@ -154,8 +187,15 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
     a = alist[ia];
     atype = type[a];
 
-    qa=bonus[ellipsoid[a]].quat;
-    MathExtra::q_to_exyz(qa,ax,ay,az);
+    ax[0] = nx[a][0];
+    ax[1] = nx[a][1];
+    ax[2] = nx[a][2];
+    ay[0] = ny[a][0];
+    ay[1] = ny[a][1];
+    ay[2] = ny[a][2];
+    az[0] = nz[a][0];
+    az[1] = nz[a][1];
+    az[2] = nz[a][2];
 
     // vector COM - backbone and base site a
     compute_interaction_sites(ax,ay,az,ra_cs,ra_cb);
@@ -179,8 +219,15 @@ void PairOxdnaExcv::compute(int eflag, int vflag)
 
       btype = type[b];
 
-      qb=bonus[ellipsoid[b]].quat;
-      MathExtra::q_to_exyz(qb,bx,by,bz);
+      bx[0] = nx[b][0];
+      bx[1] = nx[b][1];
+      bx[2] = nx[b][2];
+      by[0] = ny[b][0];
+      by[1] = ny[b][1];
+      by[2] = ny[b][2];
+      bz[0] = nz[b][0];
+      bz[1] = nz[b][1];
+      bz[2] = nz[b][2];
 
       // vector COM - backbone and base site b
       compute_interaction_sites(bx,by,bz,rb_cs,rb_cb);
@@ -400,6 +447,10 @@ void PairOxdnaExcv::allocate()
     for (int j = i; j <= n; j++)
       setflag[i][j] = 0;
 
+  memory->create(nx,atom->nmax,3,"pair:nx");
+  memory->create(ny,atom->nmax,3,"pair:ny");
+  memory->create(nz,atom->nmax,3,"pair:nz");
+
   memory->create(cutsq,n+1,n+1,"pair:cutsq");
 
   memory->create(epsilon_ss,n+1,n+1,"pair:epsilon_ss");
@@ -452,7 +503,7 @@ void PairOxdnaExcv::coeff(int narg, char **arg)
 {
   int count;
 
-  if (narg != 11) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/excv");
+  if (narg != 3 && narg != 11) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/excv" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -470,11 +521,74 @@ void PairOxdnaExcv::coeff(int narg, char **arg)
   double epsilon_bb_one, sigma_bb_one;
   double cut_bb_ast_one, cut_bb_c_one, b_bb_one;
 
-  // Excluded volume interaction
-  // LJ parameters
-  epsilon_ss_one = utils::numeric(FLERR,arg[2],false,lmp);
-  sigma_ss_one = utils::numeric(FLERR,arg[3],false,lmp);
-  cut_ss_ast_one = utils::numeric(FLERR,arg[4],false,lmp);
+  if (narg == 11) {
+    // Excluded volume interaction
+    // LJ parameters
+    epsilon_ss_one = utils::numeric(FLERR,arg[2],false,lmp);
+    sigma_ss_one = utils::numeric(FLERR,arg[3],false,lmp);
+    cut_ss_ast_one = utils::numeric(FLERR,arg[4],false,lmp);
+
+    // LJ parameters
+    epsilon_sb_one = utils::numeric(FLERR,arg[5],false,lmp);
+    sigma_sb_one = utils::numeric(FLERR,arg[6],false,lmp);
+    cut_sb_ast_one = utils::numeric(FLERR,arg[7],false,lmp);
+
+    // LJ parameters
+    epsilon_bb_one = utils::numeric(FLERR,arg[8],false,lmp);
+    sigma_bb_one = utils::numeric(FLERR,arg[9],false,lmp);
+    cut_bb_ast_one = utils::numeric(FLERR,arg[10],false,lmp);
+  } else {
+    if (comm->me == 0) {
+      PotentialFileReader reader(lmp, arg[2], "oxdna potential", " (excv)");
+      char * line;
+      std::string iloc, jloc, potential_name;
+
+      while ((line = reader.next_line())) {
+        try {
+          ValueTokenizer values(line);
+          iloc = values.next_string();
+          jloc = values.next_string();
+          potential_name = values.next_string();
+          if (iloc == arg[0] && jloc == arg[1] && potential_name == "excv") {
+            // Excluded volume interaction
+            // LJ parameters
+            epsilon_ss_one = values.next_double();
+            sigma_ss_one = values.next_double();
+            cut_ss_ast_one = values.next_double();
+
+            // LJ parameters
+            epsilon_sb_one = values.next_double();
+            sigma_sb_one = values.next_double();
+            cut_sb_ast_one = values.next_double();
+
+            // LJ parameters
+            epsilon_bb_one = values.next_double();
+            sigma_bb_one = values.next_double();
+            cut_bb_ast_one = values.next_double();
+
+            break;
+          } else continue;
+        } catch (std::exception &e) {
+          error->one(FLERR, "Problem parsing oxDNA potential file: {}", e.what());
+        }
+      }
+      if ((iloc != arg[0]) || (jloc != arg[1]) || (potential_name != "excv"))
+        error->one(FLERR, "No corresponding excv potential found in file {} for pair type {} {}",
+                   arg[2], arg[0], arg[1]);
+    }
+
+    MPI_Bcast(&epsilon_ss_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&sigma_ss_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_ss_ast_one, 1, MPI_DOUBLE, 0, world);
+
+    MPI_Bcast(&epsilon_sb_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&sigma_sb_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_sb_ast_one, 1, MPI_DOUBLE, 0, world);
+
+    MPI_Bcast(&epsilon_bb_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&sigma_bb_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_bb_ast_one, 1, MPI_DOUBLE, 0, world);
+  }
 
   // smoothing - determined through continuity and differentiability
   b_ss_one = 4.0/sigma_ss_one
@@ -498,14 +612,9 @@ void PairOxdnaExcv::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/excv");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/excv" + utils::errorurl(21));
 
   count = 0;
-
-  // LJ parameters
-  epsilon_sb_one = utils::numeric(FLERR,arg[5],false,lmp);
-  sigma_sb_one = utils::numeric(FLERR,arg[6],false,lmp);
-  cut_sb_ast_one = utils::numeric(FLERR,arg[7],false,lmp);
 
   // smoothing - determined through continuity and differentiability
   b_sb_one = 4.0/sigma_sb_one
@@ -529,14 +638,9 @@ void PairOxdnaExcv::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/excv");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/excv" + utils::errorurl(21));
 
   count = 0;
-
-  // LJ parameters
-  epsilon_bb_one = utils::numeric(FLERR,arg[8],false,lmp);
-  sigma_bb_one = utils::numeric(FLERR,arg[9],false,lmp);
-  cut_bb_ast_one = utils::numeric(FLERR,arg[10],false,lmp);
 
   // smoothing - determined through continuity and differentiability
   b_bb_one = 4.0/sigma_bb_one
@@ -560,7 +664,7 @@ void PairOxdnaExcv::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/excv");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/excv" + utils::errorurl(21));
 
 }
 
@@ -806,9 +910,56 @@ void PairOxdnaExcv::write_data_all(FILE *fp)
 
 /* ---------------------------------------------------------------------- */
 
+int PairOxdnaExcv::pack_forward_comm(int n, int *list, double *buf,
+                               int /*pbc_flag*/, int * /*pbc*/)
+{
+  int i,j,m;
+
+  m = 0;
+  for (i = 0; i < n; i++) {
+    j = list[i];
+    buf[m++] = nx[j][0];
+    buf[m++] = nx[j][1];
+    buf[m++] = nx[j][2];
+    buf[m++] = ny[j][0];
+    buf[m++] = ny[j][1];
+    buf[m++] = ny[j][2];
+    buf[m++] = nz[j][0];
+    buf[m++] = nz[j][1];
+    buf[m++] = nz[j][2];
+  }
+  return m;
+}
+
+/* ---------------------------------------------------------------------- */
+
+void PairOxdnaExcv::unpack_forward_comm(int n, int first, double *buf)
+{
+  int i,m,last;
+  m = 0;
+  last = first + n;
+  for (i = first; i < last; i++) {
+    nx[i][0] = buf[m++];
+    nx[i][1] = buf[m++];
+    nx[i][2] = buf[m++];
+    ny[i][0] = buf[m++];
+    ny[i][1] = buf[m++];
+    ny[i][2] = buf[m++];
+    nz[i][0] = buf[m++];
+    nz[i][1] = buf[m++];
+    nz[i][2] = buf[m++];
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+
 void *PairOxdnaExcv::extract(const char *str, int &dim)
 {
   dim = 2;
+
+  if (strcmp(str,"nx") == 0) return (void *) nx;
+  if (strcmp(str,"ny") == 0) return (void *) ny;
+  if (strcmp(str,"nz") == 0) return (void *) nz;
 
   if (strcmp(str,"epsilon_ss") == 0) return (void *) epsilon_ss;
   if (strcmp(str,"sigma_ss") == 0) return (void *) sigma_ss;

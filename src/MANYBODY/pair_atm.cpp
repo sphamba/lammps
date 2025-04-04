@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -18,28 +18,29 @@
 
 #include "pair_atm.h"
 
-#include <cmath>
 #include "atom.h"
 #include "citeme.h"
 #include "comm.h"
 #include "error.h"
 #include "force.h"
+#include "info.h"
 #include "memory.h"
 #include "neigh_list.h"
-#include "neigh_request.h"
 #include "neighbor.h"
 
+#include <cmath>
 
 using namespace LAMMPS_NS;
 
 static const char cite_atm_package[] =
-  "ATM package:\n\n"
+  "ATM package: doi:10.1063/1.4704930\n\n"
   "@Article{Lishchuk:2012:164501,\n"
   " author = {S. V. Lishchuk},\n"
-  " title = {Role of three-body interactions in formation of bulk viscosity in liquid argon},\n"
-  " journal = {J.~Chem.~Phys.},\n"
+  " title = {Role of Three-Body Interactions in Formation of Bulk Viscosity in Liquid Argon},\n"
+  " journal = {J.~Chem.\\ Phys.},\n"
   " year =    2012,\n"
   " volume =  136,\n"
+  " number =  16,\n"
   " pages =   {164501}\n"
   "}\n\n";
 
@@ -105,7 +106,7 @@ void PairATM::compute(int eflag, int vflag)
   // must compute each IJK triplet interaction exactly once
   // by proc that owns the triplet atom with smallest x coord
   //   special logic to break ties if multiple atoms have same x or y coords
-  // inner two loops for jj=1,Jnum and kk=jj+1,Jnum insure
+  // inner two loops for jj=1,Jnum and kk=jj+1,Jnum ensure
   //   the pair of other 2 non-minimum-x atoms is only considered once
   // triplet geometry criteria for calculation:
   //   each pair distance <= cutoff
@@ -222,15 +223,31 @@ void PairATM::settings(int narg, char **arg)
 
 void PairATM::coeff(int narg, char **arg)
 {
-  if (narg != 4) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (narg != 4) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi,klo,khi;
-  utils::bounds(FLERR,arg[0],1,atom->ntypes,ilo,ihi,error);
-  utils::bounds(FLERR,arg[1],1,atom->ntypes,jlo,jhi,error);
-  utils::bounds(FLERR,arg[2],1,atom->ntypes,klo,khi,error);
+  utils::bounds(FLERR, arg[0], 1, atom->ntypes, ilo, ihi, error);
+  utils::bounds(FLERR, arg[1], 1, atom->ntypes, jlo, jhi, error);
+  utils::bounds_typelabel(FLERR, arg[2], 1, atom->ntypes, klo, khi, lmp, Atom::ATOM);
 
-  double nu_one = utils::numeric(FLERR,arg[3],false,lmp);
+  // if explicit numeric value or type label used, reorder such at I < J < K
+  // note that, in the above case, I is already guaranteed to be less than J
+
+  if (jlo == jhi && klo == khi && klo < jlo) {
+    klo = jlo;
+    jlo = khi;
+    khi = klo;
+    jhi = jlo;
+    if (ilo == ihi && jlo == jhi && jlo < ilo) {
+      jlo = ilo;
+      ilo = jhi;
+      jhi = jlo;
+      ihi = ilo;
+    }
+  }
+
+  double nu_one = utils::numeric(FLERR, arg[3], false, lmp);
 
   int count = 0;
   for (int i = ilo; i <= ihi; i++) {
@@ -243,7 +260,7 @@ void PairATM::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -253,13 +270,11 @@ void PairATM::coeff(int narg, char **arg)
 void PairATM::init_style()
 {
   if (force->newton_pair == 0)
-    error->all(FLERR,"Pair style ATM requires newton pair on");
+    error->all(FLERR, Error::NOLASTLINE, "Pair style ATM requires newton pair on");
 
   // need a full neighbor list
 
-  int irequest = neighbor->request(this,instance_me);
-  neighbor->requests[irequest]->half = 0;
-  neighbor->requests[irequest]->full = 1;
+  neighbor->add_request(this, NeighConst::REQ_FULL);
 }
 
 /* ----------------------------------------------------------------------
@@ -269,7 +284,9 @@ void PairATM::init_style()
 
 double PairATM::init_one(int i, int j)
 {
-  if (setflag[i][j] == 0) error->all(FLERR,"All pair coeffs are not set");
+  if (setflag[i][j] == 0)
+    error->all(FLERR, Error::NOLASTLINE,
+               "All pair coeffs are not set. Status\n" + Info::get_pair_coeff_status(lmp));
 
   // set all 6 symmetric permutations of I,J,K types to same nu value
 

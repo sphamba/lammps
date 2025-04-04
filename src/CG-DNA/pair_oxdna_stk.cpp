@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -18,14 +18,16 @@
 #include "pair_oxdna_stk.h"
 
 #include "atom.h"
-#include "atom_vec_ellipsoid.h"
 #include "comm.h"
+#include "constants_oxdna.h"
 #include "error.h"
 #include "force.h"
 #include "math_extra.h"
 #include "memory.h"
 #include "mf_oxdna.h"
 #include "neighbor.h"
+#include "neigh_list.h"
+#include "potential_file_reader.h"
 
 #include <cmath>
 #include <cstring>
@@ -39,6 +41,7 @@ PairOxdnaStk::PairOxdnaStk(LAMMPS *lmp) : Pair(lmp)
 {
   single_enable = 0;
   writedata = 1;
+  trim_flag = 0;
 
   // sequence-specific stacking strength
   // A:0 C:1 G:2 T:3, 3'- [i][j] -5'
@@ -212,9 +215,8 @@ void PairOxdnaStk::ev_tally_xyz(int i, int j, int nlocal, int newton_bond,
 
 void PairOxdnaStk::compute(int eflag, int vflag)
 {
-
   double delf[3],delta[3],deltb[3]; // force, torque increment;
-  double evdwl,fpair,finc,tpair;
+  double evdwl,finc,tpair;
   double delr_ss[3],delr_ss_norm[3],rsq_ss,r_ss,rinv_ss;
   double delr_st[3],delr_st_norm[3],rsq_st,r_st,rinv_st;
   double theta4,t4dir[3],cost4;
@@ -223,14 +225,14 @@ void PairOxdnaStk::compute(int eflag, int vflag)
   double cosphi1,cosphi2,cosphi1dir[3],cosphi2dir[3];
 
   // distances COM-backbone site, COM-stacking site
-  double d_cs=-0.4, d_cst=+0.34;
+  double d_cs = ConstantsOxdna::get_d_cs();
+  double d_cst = ConstantsOxdna::get_d_cst();
   // vectors COM-backbone site, COM-stacking site in lab frame
   double ra_cs[3],ra_cst[3];
   double rb_cs[3],rb_cst[3];
-
-  // quaternions and Cartesian unit vectors in lab frame
-  double *qa,ax[3],ay[3],az[3];
-  double *qb,bx[3],by[3],bz[3];
+  // Cartesian unit vectors in lab frame
+  double ax[3],ay[3],az[3];
+  double bx[3],by[3],bz[3];
 
   double **x = atom->x;
   double **f = atom->f;
@@ -245,10 +247,6 @@ void PairOxdnaStk::compute(int eflag, int vflag)
 
   tagint *id5p = atom->id5p;
 
-  AtomVecEllipsoid *avec = (AtomVecEllipsoid *) atom->style_match("ellipsoid");
-  AtomVecEllipsoid::Bonus *bonus = avec->bonus;
-  int *ellipsoid = atom->ellipsoid;
-
   int a,b,btemp,in,atype,btype;
 
   double f1,f4t4,f4t5,f4t6,f5c1,f5c2;
@@ -256,6 +254,12 @@ void PairOxdnaStk::compute(int eflag, int vflag)
 
   evdwl = 0.0;
   ev_init(eflag,vflag);
+
+  // n(x/y/z)_xtrct = extracted local unit vectors from oxdna_excv
+  int dim;
+  nx_xtrct = (double **) force->pair->extract("nx",dim);
+  ny_xtrct = (double **) force->pair->extract("ny",dim);
+  nz_xtrct = (double **) force->pair->extract("nz",dim);
 
   // loop over stacking interaction neighbors using bond topology
 
@@ -275,10 +279,13 @@ void PairOxdnaStk::compute(int eflag, int vflag)
 
     // a now in 3' direction, b in 5' direction
 
-    qa=bonus[ellipsoid[a]].quat;
-    MathExtra::q_to_exyz(qa,ax,ay,az);
-    qb=bonus[ellipsoid[b]].quat;
-    MathExtra::q_to_exyz(qb,bx,by,bz);
+    ax[0] = nx_xtrct[a][0];
+    ax[1] = nx_xtrct[a][1];
+    ax[2] = nx_xtrct[a][2];
+    bx[0] = nx_xtrct[b][0];
+    bx[1] = nx_xtrct[b][1];
+    bx[2] = nx_xtrct[b][2];
+    // (a/b)y/z not needed here as oxDNA(1) co-linear
 
     // vector COM a - stacking site a
     ra_cst[0] = d_cst*ax[0];
@@ -336,6 +343,13 @@ void PairOxdnaStk::compute(int eflag, int vflag)
     // early rejection criterium
     if (f1) {
 
+    az[0] = nz_xtrct[a][0];
+    az[1] = nz_xtrct[a][1];
+    az[2] = nz_xtrct[a][2];
+    bz[0] = nz_xtrct[b][0];
+    bz[1] = nz_xtrct[b][1];
+    bz[2] = nz_xtrct[b][2];
+
     // theta4 angle and correction
     cost4 = MathExtra::dot3(bz,az);
     if (cost4 >  1.0) cost4 =  1.0;
@@ -359,6 +373,13 @@ void PairOxdnaStk::compute(int eflag, int vflag)
 
     // early rejection criterium
     if (f4t5) {
+
+    ay[0] = ny_xtrct[a][0];
+    ay[1] = ny_xtrct[a][1];
+    ay[2] = ny_xtrct[a][2];
+    by[0] = ny_xtrct[b][0];
+    by[1] = ny_xtrct[b][1];
+    by[2] = ny_xtrct[b][2];
 
     cost6p = MathExtra::dot3(delr_st_norm,az);
     if (cost6p >  1.0) cost6p =  1.0;
@@ -409,8 +430,6 @@ void PairOxdnaStk::compute(int eflag, int vflag)
 
     // force, torque and virial contribution for forces between stacking sites
 
-    fpair = 0.0;
-
     delf[0] = 0.0;
     delf[1] = 0.0;
     delf[2] = 0.0;
@@ -425,7 +444,6 @@ void PairOxdnaStk::compute(int eflag, int vflag)
 
     // radial force
     finc  = -df1 * f4t4 * f4t5 * f4t6 * f5c1 * f5c2;
-    fpair += finc;
 
     delf[0] += delr_st[0] * finc;
     delf[1] += delr_st[1] * finc;
@@ -435,7 +453,6 @@ void PairOxdnaStk::compute(int eflag, int vflag)
     if (theta5p) {
 
       finc   = -f1 * f4t4 * df4t5 * f4t6 * f5c1 * f5c2 * rinv_st;
-      fpair += finc;
 
       delf[0] += (delr_st_norm[0]*cost5p - bz[0]) * finc;
       delf[1] += (delr_st_norm[1]*cost5p - bz[1]) * finc;
@@ -447,7 +464,6 @@ void PairOxdnaStk::compute(int eflag, int vflag)
     if (theta6p) {
 
       finc   = -f1 * f4t4 * f4t5 * df4t6 * f5c1 * f5c2 * rinv_st;
-      fpair += finc;
 
       delf[0] += (delr_st_norm[0]*cost6p - az[0]) * finc;
       delf[1] += (delr_st_norm[1]*cost6p - az[1]) * finc;
@@ -499,8 +515,6 @@ void PairOxdnaStk::compute(int eflag, int vflag)
 
     // force, torque and virial contribution for forces between backbone sites
 
-    fpair = 0.0;
-
     delf[0] = 0.0;
     delf[1] = 0.0;
     delf[2] = 0.0;
@@ -517,7 +531,6 @@ void PairOxdnaStk::compute(int eflag, int vflag)
     if (cosphi1) {
 
       finc   = -f1 * f4t4 * f4t5 * f4t6 * df5c1 * f5c2 * rinv_ss;
-      fpair += finc;
 
       delf[0] += (delr_ss_norm[0]*cosphi1 - by[0]) * finc;
       delf[1] += (delr_ss_norm[1]*cosphi1 - by[1]) * finc;
@@ -529,7 +542,6 @@ void PairOxdnaStk::compute(int eflag, int vflag)
     if (cosphi2) {
 
       finc   = -f1 * f4t4 * f4t5 * f4t6 * f5c1 * df5c2 * rinv_ss;
-      fpair += finc;
 
       delf[0] += (delr_ss_norm[0]*cosphi2 - ay[0]) * finc;
       delf[1] += (delr_ss_norm[1]*cosphi2 - ay[1]) * finc;
@@ -766,7 +778,7 @@ void PairOxdnaStk::coeff(int narg, char **arg)
 {
   int count;
 
-  if (narg != 24) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/stk");
+  if (narg != 7 && narg != 24) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/stk" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi,imod4,jmod4;
@@ -803,25 +815,91 @@ void PairOxdnaStk::coeff(int narg, char **arg)
   kappa_st_one = utils::numeric(FLERR,arg[5],false,lmp);
   epsilon_st_one = stacking_strength(xi_st_one, kappa_st_one, T);
 
-  a_st_one = utils::numeric(FLERR,arg[6],false,lmp);
-  cut_st_0_one = utils::numeric(FLERR,arg[7],false,lmp);
-  cut_st_c_one = utils::numeric(FLERR,arg[8],false,lmp);
-  cut_st_lo_one = utils::numeric(FLERR,arg[9],false,lmp);
-  cut_st_hi_one = utils::numeric(FLERR,arg[10],false,lmp);
+  if (narg == 24) { // values are listed in input
+    a_st_one = utils::numeric(FLERR,arg[6],false,lmp);
+    cut_st_0_one = utils::numeric(FLERR,arg[7],false,lmp);
+    cut_st_c_one = utils::numeric(FLERR,arg[8],false,lmp);
+    cut_st_lo_one = utils::numeric(FLERR,arg[9],false,lmp);
+    cut_st_hi_one = utils::numeric(FLERR,arg[10],false,lmp);
 
-  a_st4_one = utils::numeric(FLERR,arg[11],false,lmp);
-  theta_st4_0_one = utils::numeric(FLERR,arg[12],false,lmp);
-  dtheta_st4_ast_one = utils::numeric(FLERR,arg[13],false,lmp);
-  a_st5_one = utils::numeric(FLERR,arg[14],false,lmp);
-  theta_st5_0_one = utils::numeric(FLERR,arg[15],false,lmp);
-  dtheta_st5_ast_one = utils::numeric(FLERR,arg[16],false,lmp);
-  a_st6_one = utils::numeric(FLERR,arg[17],false,lmp);
-  theta_st6_0_one = utils::numeric(FLERR,arg[18],false,lmp);
-  dtheta_st6_ast_one = utils::numeric(FLERR,arg[19],false,lmp);
-  a_st1_one = utils::numeric(FLERR,arg[20],false,lmp);
-  cosphi_st1_ast_one = utils::numeric(FLERR,arg[21],false,lmp);
-  a_st2_one = utils::numeric(FLERR,arg[22],false,lmp);
-  cosphi_st2_ast_one = utils::numeric(FLERR,arg[23],false,lmp);
+    a_st4_one = utils::numeric(FLERR,arg[11],false,lmp);
+    theta_st4_0_one = utils::numeric(FLERR,arg[12],false,lmp);
+    dtheta_st4_ast_one = utils::numeric(FLERR,arg[13],false,lmp);
+    a_st5_one = utils::numeric(FLERR,arg[14],false,lmp);
+    theta_st5_0_one = utils::numeric(FLERR,arg[15],false,lmp);
+    dtheta_st5_ast_one = utils::numeric(FLERR,arg[16],false,lmp);
+    a_st6_one = utils::numeric(FLERR,arg[17],false,lmp);
+    theta_st6_0_one = utils::numeric(FLERR,arg[18],false,lmp);
+    dtheta_st6_ast_one = utils::numeric(FLERR,arg[19],false,lmp);
+    a_st1_one = utils::numeric(FLERR,arg[20],false,lmp);
+    cosphi_st1_ast_one = utils::numeric(FLERR,arg[21],false,lmp);
+    a_st2_one = utils::numeric(FLERR,arg[22],false,lmp);
+    cosphi_st2_ast_one = utils::numeric(FLERR,arg[23],false,lmp);
+  } else { // read values from potential file
+    if (comm->me == 0) {
+      PotentialFileReader reader(lmp, arg[6], "oxdna potential", " (stk)");
+      char * line;
+      std::string iloc, jloc, potential_name;
+
+      while ((line = reader.next_line())) {
+        try {
+          ValueTokenizer values(line);
+          iloc = values.next_string();
+          jloc = values.next_string();
+          potential_name = values.next_string();
+          if (iloc == arg[0] && jloc == arg[1] && potential_name == "stk") {
+
+            a_st_one = values.next_double();
+            cut_st_0_one = values.next_double();
+            cut_st_c_one = values.next_double();
+            cut_st_lo_one = values.next_double();
+            cut_st_hi_one = values.next_double();
+
+            a_st4_one = values.next_double();
+            theta_st4_0_one = values.next_double();
+            dtheta_st4_ast_one = values.next_double();
+            a_st5_one = values.next_double();
+            theta_st5_0_one = values.next_double();
+            dtheta_st5_ast_one = values.next_double();
+            a_st6_one = values.next_double();
+            theta_st6_0_one = values.next_double();
+            dtheta_st6_ast_one = values.next_double();
+            a_st1_one = values.next_double();
+            cosphi_st1_ast_one = values.next_double();
+            a_st2_one = values.next_double();
+            cosphi_st2_ast_one = values.next_double();
+
+            break;
+          } else continue;
+        } catch (std::exception &e) {
+          error->one(FLERR, "Problem parsing oxDNA potential file: {}", e.what());
+        }
+      }
+      if ((iloc != arg[0]) || (jloc != arg[1]) || (potential_name != "stk"))
+        error->one(FLERR, "No corresponding stk potential found in file {} for pair type {} {}",
+                   arg[4], arg[0], arg[1]);
+    }
+
+    MPI_Bcast(&a_st_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_st_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_st_c_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_st_lo_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_st_hi_one, 1, MPI_DOUBLE, 0, world);
+
+    MPI_Bcast(&a_st4_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&theta_st4_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&dtheta_st4_ast_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&a_st5_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&theta_st5_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&dtheta_st5_ast_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&a_st6_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&theta_st6_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&dtheta_st6_ast_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&a_st1_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cosphi_st1_ast_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&a_st2_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cosphi_st2_ast_one, 1, MPI_DOUBLE, 0, world);
+  }
 
   b_st_lo_one = 2*a_st_one*exp(-a_st_one*(cut_st_lo_one-cut_st_0_one))*
         2*a_st_one*exp(-a_st_one*(cut_st_lo_one-cut_st_0_one))*
@@ -920,7 +998,7 @@ void PairOxdnaStk::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/stk");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/stk" + utils::errorurl(21));
 
 }
 

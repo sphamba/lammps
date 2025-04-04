@@ -1,48 +1,21 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 3.0
-//       Copyright (2020) National Technology & Engineering
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
 //               Solutions of Sandia, LLC (NTESS).
 //
 // Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NTESS OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
 
 #include <cstdio>
+#include <sstream>
 
 #include <gtest/gtest.h>
 
@@ -69,21 +42,6 @@ struct TestMDRange_ReduceArray_2D {
   TestMDRange_ReduceArray_2D(const int N0, const int N1,
                              const unsigned array_size)
       : input_view("input_view", N0, N1), value_count(array_size) {}
-
-  KOKKOS_INLINE_FUNCTION
-  void init(scalar_type dst[]) const {
-    for (unsigned i = 0; i < value_count; ++i) {
-      dst[i] = 0.0;
-    }
-  }
-
-  KOKKOS_INLINE_FUNCTION
-  void join(volatile scalar_type dst[],
-            const volatile scalar_type src[]) const {
-    for (unsigned i = 0; i < value_count; ++i) {
-      dst[i] += src[i];
-    }
-  }
 
   KOKKOS_INLINE_FUNCTION
   void operator()(const int i, const int j) const { input_view(i, j) = 1; }
@@ -124,6 +82,7 @@ struct TestMDRange_ReduceArray_2D {
       parallel_for(range_init, functor);  // Init the view to 3's
 
       double sums[array_size];
+      Kokkos::fence("Fence before accessing result on the host");
       parallel_reduce(range, functor, sums);
 
       // Check output
@@ -160,8 +119,7 @@ struct TestMDRange_ReduceArray_3D {
   }
 
   KOKKOS_INLINE_FUNCTION
-  void join(volatile scalar_type dst[],
-            const volatile scalar_type src[]) const {
+  void join(scalar_type dst[], const scalar_type src[]) const {
     for (unsigned i = 0; i < value_count; ++i) {
       dst[i] += src[i];
     }
@@ -255,7 +213,6 @@ struct TestMDRange_2D {
   }
 
   static void test_reduce2(const int N0, const int N1) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<2>,
@@ -274,7 +231,6 @@ struct TestMDRange_2D {
           sum);
       ASSERT_EQ(sum, N0 * N1);
     }
-#endif
 
     {
       using range_type =
@@ -358,7 +314,6 @@ struct TestMDRange_2D {
       ASSERT_EQ(sum, 2 * N0 * N1);
     }
     // Test Min reducer with lambda
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<2>,
@@ -378,13 +333,13 @@ struct TestMDRange_2D {
       parallel_reduce(
           "rank2-min-reducer", range,
           KOKKOS_LAMBDA(const int i, const int j, double &min_val) {
-            min_val = Kokkos::Experimental::fmin(v_in(i, j), min_val);
+            min_val = Kokkos::fmin(v_in(i, j), min_val);
           },
           reducer_scalar);
 
       ASSERT_EQ(min, 4.0);
     }
-#endif
+
     // Tagged operator test
     {
       using range_type = typename Kokkos::MDRangePolicy<
@@ -521,7 +476,6 @@ struct TestMDRange_2D {
   }  // end test_reduce2
 
   static void test_for2(const int N0, const int N1) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<2>,
@@ -560,7 +514,6 @@ struct TestMDRange_2D {
 
       ASSERT_EQ(counter, 0);
     }
-#endif
 
     {
       using range_type =
@@ -889,7 +842,6 @@ struct TestMDRange_3D {
   }
 
   static void test_reduce3(const int N0, const int N1, const int N2) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<3>,
@@ -907,7 +859,6 @@ struct TestMDRange_3D {
           sum);
       ASSERT_EQ(sum, N0 * N1 * N2);
     }
-#endif
 
     {
       using range_type =
@@ -990,7 +941,6 @@ struct TestMDRange_3D {
       ASSERT_EQ(sum, 2 * N0 * N1 * N2);
     }
     // Test Min reducer with lambda
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<3>,
@@ -1023,7 +973,6 @@ struct TestMDRange_3D {
         ASSERT_EQ(min, min_identity);
       }
     }
-#endif
 
     // Tagged operator test
     {
@@ -1162,7 +1111,6 @@ struct TestMDRange_3D {
   }  // end test_reduce3
 
   static void test_for3(const int N0, const int N1, const int N2) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<3>,
@@ -1205,7 +1153,6 @@ struct TestMDRange_3D {
 
       ASSERT_EQ(counter, 0);
     }
-#endif
 
     {
       using range_type =
@@ -1507,6 +1454,13 @@ struct TestMDRange_4D {
     input_view(i, j, k, l) = 3;
   }
 
+  struct AtomicTag {};
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const AtomicTag &, const int i, const int j, const int k,
+                  const int l) const {
+    Kokkos::atomic_add(&input_view(i, j, k, l), 1);
+  }
+
   // reduction tagged operators
   KOKKOS_INLINE_FUNCTION
   void operator()(const InitTag &, const int i, const int j, const int k,
@@ -1514,9 +1468,18 @@ struct TestMDRange_4D {
     lsum += input_view(i, j, k, l) * 3;
   }
 
+  using MinMax      = Kokkos::MinMax<DataType>;
+  using MinMaxValue = MinMax::value_type;
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const AtomicTag &, const int i, const int j, const int k,
+                  const int l, MinMaxValue &lminmax, DataType &lsum) const {
+    lminmax.min_val = Kokkos::min(lminmax.min_val, input_view(i, j, k, l));
+    lminmax.max_val = Kokkos::max(lminmax.max_val, input_view(i, j, k, l));
+    lsum += 1;
+  }
+
   static void test_reduce4(const int N0, const int N1, const int N2,
                            const int N3) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4>,
@@ -1534,7 +1497,6 @@ struct TestMDRange_4D {
           sum);
       ASSERT_EQ(sum, N0 * N1 * N2 * N3);
     }
-#endif
 
     {
       using range_type =
@@ -1621,7 +1583,6 @@ struct TestMDRange_4D {
     }
 
     // Test Min reducer with lambda
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4>,
@@ -1649,7 +1610,6 @@ struct TestMDRange_4D {
 
       ASSERT_EQ(min, 16.0);
     }
-#endif
 
     // Tagged operator test
     {
@@ -1791,7 +1751,6 @@ struct TestMDRange_4D {
 
   static void test_for4(const int N0, const int N1, const int N2,
                         const int N3) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4>,
@@ -1835,7 +1794,6 @@ struct TestMDRange_4D {
 
       ASSERT_EQ(counter, 0);
     }
-#endif
 
     {
       using range_type =
@@ -2117,6 +2075,49 @@ struct TestMDRange_4D {
       ASSERT_EQ(counter, 0);
     }
   }  // end test_for4
+
+  // test that each iteration is evaluated only once
+  // see #7697
+  static void test_for4_eval_once(const int N0, const int N1, const int N2,
+                                  const int N3) {
+    test_for4_eval_once_iterate<Iterate::Left, Iterate::Left>(N0, N1, N2, N3,
+                                                              "LL");
+    test_for4_eval_once_iterate<Iterate::Left, Iterate::Right>(N0, N1, N2, N3,
+                                                               "LR");
+    test_for4_eval_once_iterate<Iterate::Right, Iterate::Left>(N0, N1, N2, N3,
+                                                               "RL");
+    test_for4_eval_once_iterate<Iterate::Right, Iterate::Right>(N0, N1, N2, N3,
+                                                                "RR");
+  }  // end test_for4_eval_once
+
+ private:
+  // test that each iteration is evaluated only once for a specified iteration
+  // order
+  template <Iterate Outer, Iterate Inner>
+  static void test_for4_eval_once_iterate(const int N0, const int N1,
+                                          const int N2, const int N3,
+                                          const char *iterate_msg) {
+    using range_type =
+        typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<4, Outer, Inner>,
+                                       Kokkos::IndexType<int>, AtomicTag>;
+    using point_type = typename range_type::point_type;
+
+    range_type range(point_type{{0, 0, 0, 0}}, point_type{{N0, N1, N2, N3}});
+
+    TestMDRange_4D functor(N0, N1, N2, N3);
+
+    Kokkos::parallel_for(range, functor);
+    MinMaxValue min_max_value;
+    DataType sum_value;
+    Kokkos::parallel_reduce(range, functor, MinMax(min_max_value), sum_value);
+
+    std::ostringstream message;
+    message << "For shape (" << N0 << ", " << N1 << ", " << N2 << ", " << N3
+            << ") and iterate order " << iterate_msg;
+    ASSERT_EQ(min_max_value.min_val, 1) << message.str();
+    ASSERT_EQ(min_max_value.max_val, 1) << message.str();
+    ASSERT_EQ(sum_value, N0 * N1 * N2 * N3) << message.str();
+  }  // end test_for4_eval_once_iterate
 };
 
 template <typename ExecSpace>
@@ -2152,6 +2153,13 @@ struct TestMDRange_5D {
     input_view(i, j, k, l, m) = 3;
   }
 
+  struct AtomicTag {};
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const AtomicTag &, const int i, const int j, const int k,
+                  const int l, const int m) const {
+    Kokkos::atomic_add(&input_view(i, j, k, l, m), 1);
+  }
+
   // reduction tagged operators
   KOKKOS_INLINE_FUNCTION
   void operator()(const InitTag &, const int i, const int j, const int k,
@@ -2159,9 +2167,19 @@ struct TestMDRange_5D {
     lsum += input_view(i, j, k, l, m) * 3;
   }
 
+  using MinMax      = Kokkos::MinMax<DataType>;
+  using MinMaxValue = MinMax::value_type;
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const AtomicTag &, const int i, const int j, const int k,
+                  const int l, const int m, MinMaxValue &lminmax,
+                  DataType &lsum) const {
+    lminmax.min_val = Kokkos::min(lminmax.min_val, input_view(i, j, k, l, m));
+    lminmax.max_val = Kokkos::max(lminmax.max_val, input_view(i, j, k, l, m));
+    lsum += 1;
+  }
+
   static void test_reduce5(const int N0, const int N1, const int N2,
                            const int N3, const int N4) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<5>,
@@ -2181,7 +2199,6 @@ struct TestMDRange_5D {
           sum);
       ASSERT_EQ(sum, N0 * N1 * N2 * N3 * N4);
     }
-#endif
 
     {
       using range_type =
@@ -2274,7 +2291,6 @@ struct TestMDRange_5D {
     }
 
     // Test Min reducer with lambda
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<5>,
@@ -2306,7 +2322,6 @@ struct TestMDRange_5D {
 
       ASSERT_EQ(min, 32.0);
     }
-#endif
 
     // Tagged operator test
     {
@@ -2355,7 +2370,6 @@ struct TestMDRange_5D {
 
   static void test_for5(const int N0, const int N1, const int N2, const int N3,
                         const int N4) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<5>,
@@ -2403,7 +2417,6 @@ struct TestMDRange_5D {
 
       ASSERT_EQ(counter, 0);
     }
-#endif
 
     {
       using range_type =
@@ -2703,7 +2716,52 @@ struct TestMDRange_5D {
 
       ASSERT_EQ(counter, 0);
     }
-  }
+  }  // end test_for5
+
+  // test that each iteration is evaluated only once
+  // see #7697
+  static void test_for5_eval_once(const int N0, const int N1, const int N2,
+                                  const int N3, const int N4) {
+    test_for5_eval_once_iterate<Iterate::Left, Iterate::Left>(N0, N1, N2, N3,
+                                                              N4, "LL");
+    test_for5_eval_once_iterate<Iterate::Left, Iterate::Right>(N0, N1, N2, N3,
+                                                               N4, "LR");
+    test_for5_eval_once_iterate<Iterate::Right, Iterate::Left>(N0, N1, N2, N3,
+                                                               N4, "RL");
+    test_for5_eval_once_iterate<Iterate::Right, Iterate::Right>(N0, N1, N2, N3,
+                                                                N4, "RR");
+  }  // end test_for5_eval_once
+
+ private:
+  // test that each iteration is evaluated only once for a specified iteration
+  // order
+  template <Iterate Outer, Iterate Inner>
+  static void test_for5_eval_once_iterate(const int N0, const int N1,
+                                          const int N2, const int N3,
+                                          const int N4,
+                                          const char *iterate_msg) {
+    using range_type =
+        typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<5, Outer, Inner>,
+                                       Kokkos::IndexType<int>, AtomicTag>;
+    using point_type = typename range_type::point_type;
+
+    range_type range(point_type{{0, 0, 0, 0, 0}},
+                     point_type{{N0, N1, N2, N3, N4}});
+
+    TestMDRange_5D functor(N0, N1, N2, N3, N4);
+
+    Kokkos::parallel_for(range, functor);
+    MinMaxValue min_max_value;
+    DataType sum_value;
+    Kokkos::parallel_reduce(range, functor, MinMax(min_max_value), sum_value);
+
+    std::ostringstream message;
+    message << "For shape (" << N0 << ", " << N1 << ", " << N2 << ", " << N3
+            << ", " << N4 << ") and iterate order " << iterate_msg;
+    ASSERT_EQ(min_max_value.min_val, 1) << message.str();
+    ASSERT_EQ(min_max_value.max_val, 1) << message.str();
+    ASSERT_EQ(sum_value, N0 * N1 * N2 * N3 * N4) << message.str();
+  }  // end test_for5_eval_once_iterate
 };
 
 template <typename ExecSpace>
@@ -2739,6 +2797,13 @@ struct TestMDRange_6D {
     input_view(i, j, k, l, m, n) = 3;
   }
 
+  struct AtomicTag {};
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const AtomicTag &, const int i, const int j, const int k,
+                  const int l, const int m, const int n) const {
+    Kokkos::atomic_add(&input_view(i, j, k, l, m, n), 1);
+  }
+
   // reduction tagged operators
   KOKKOS_INLINE_FUNCTION
   void operator()(const InitTag &, const int i, const int j, const int k,
@@ -2747,13 +2812,27 @@ struct TestMDRange_6D {
     lsum += input_view(i, j, k, l, m, n) * 3;
   }
 
+  using MinMax      = Kokkos::MinMax<DataType>;
+  using MinMaxValue = MinMax::value_type;
+  KOKKOS_INLINE_FUNCTION
+  void operator()(const AtomicTag &, const int i, const int j, const int k,
+                  const int l, const int m, const int n, MinMaxValue &lminmax,
+                  DataType &lsum) const {
+    lminmax.min_val =
+        Kokkos::min(lminmax.min_val, input_view(i, j, k, l, m, n));
+    lminmax.max_val =
+        Kokkos::max(lminmax.max_val, input_view(i, j, k, l, m, n));
+    lsum += 1;
+  }
+
   static void test_reduce6(const int N0, const int N1, const int N2,
                            const int N3, const int N4, const int N5) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
-      using range_type =
-          typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>,
-                                         Kokkos::IndexType<int>>;
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
+      using range_type = typename Kokkos::MDRangePolicy<
+          ExecSpace, Kokkos::LaunchBounds<128, 1>, Kokkos::Rank<6>,
+          Kokkos::IndexType<int>>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
 
@@ -2769,12 +2848,13 @@ struct TestMDRange_6D {
           sum);
       ASSERT_EQ(sum, N0 * N1 * N2 * N3 * N4 * N5);
     }
-#endif
 
     {
-      using range_type =
-          typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>,
-                                         Kokkos::IndexType<int>>;
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
+      using range_type = typename Kokkos::MDRangePolicy<
+          ExecSpace, Kokkos::LaunchBounds<512, 1>, Kokkos::Rank<6>,
+          Kokkos::IndexType<int>>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
 
@@ -2807,9 +2887,11 @@ struct TestMDRange_6D {
 
     // Test with reducers - scalar
     {
-      using range_type =
-          typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>,
-                                         Kokkos::IndexType<int>>;
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
+      using range_type = typename Kokkos::MDRangePolicy<
+          ExecSpace, Kokkos::LaunchBounds<512, 1>, Kokkos::Rank<6>,
+          Kokkos::IndexType<int>>;
 #ifdef KOKKOS_ENABLE_SYCL
       range_type range({{0, 0, 0, 0, 0, 0}}, {{N0, N1, N2, N3, N4, N5}},
                        {{3, 3, 3, 2, 2, 2}});
@@ -2832,9 +2914,11 @@ struct TestMDRange_6D {
 
     // Test with reducers - scalar + label
     {
-      using range_type =
-          typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>,
-                                         Kokkos::IndexType<int>>;
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
+      using range_type = typename Kokkos::MDRangePolicy<
+          ExecSpace, Kokkos::LaunchBounds<512, 1>, Kokkos::Rank<6>,
+          Kokkos::IndexType<int>>;
 
 #ifdef KOKKOS_ENABLE_SYCL
       range_type range({{0, 0, 0, 0, 0, 0}}, {{N0, N1, N2, N3, N4, N5}},
@@ -2858,9 +2942,12 @@ struct TestMDRange_6D {
 
     // Test with reducers - scalar view
     {
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
       using range_type =
           typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>,
-                                         Kokkos::IndexType<int>>;
+                                         Kokkos::IndexType<int>,
+                                         Kokkos::LaunchBounds<512, 1>>;
 #ifdef KOKKOS_ENABLE_SYCL
       range_type range({{0, 0, 0, 0, 0, 0}}, {{N0, N1, N2, N3, N4, N5}},
                        {{3, 3, 3, 2, 2, 2}});
@@ -2886,11 +2973,12 @@ struct TestMDRange_6D {
     }
 
     // Test Min reducer with lambda
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
-      using range_type =
-          typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>,
-                                         Kokkos::IndexType<int>>;
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
+      using range_type = typename Kokkos::MDRangePolicy<
+          ExecSpace, Kokkos::LaunchBounds<128, 1>, Kokkos::Rank<6>,
+          Kokkos::IndexType<int>>;
       range_type range({{1, 1, 1, 1, 1, 1}}, {{N0, N1, N2, N3, N4, N5}},
                        {{3, 3, 3, 2, 2, 1}});
 
@@ -2919,12 +3007,14 @@ struct TestMDRange_6D {
 
       ASSERT_EQ(min, 64.0);
     }
-#endif
 
     // Tagged operator test
     {
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
       using range_type = typename Kokkos::MDRangePolicy<
-          ExecSpace, Kokkos::Rank<6, Iterate::Default, Iterate::Default>,
+          ExecSpace, Kokkos::LaunchBounds<512, 1>,
+          Kokkos::Rank<6, Iterate::Default, Iterate::Default>,
           Kokkos::IndexType<int>, InitTag>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
@@ -2975,11 +3065,12 @@ struct TestMDRange_6D {
 
   static void test_for6(const int N0, const int N1, const int N2, const int N3,
                         const int N4, const int N5) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     {
-      using range_type =
-          typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>,
-                                         Kokkos::IndexType<int>>;
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
+      using range_type = typename Kokkos::MDRangePolicy<
+          ExecSpace, Kokkos::LaunchBounds<128, 1>, Kokkos::Rank<6>,
+          Kokkos::IndexType<int>>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
 
@@ -3025,11 +3116,12 @@ struct TestMDRange_6D {
 
       ASSERT_EQ(counter, 0);
     }
-#endif
 
     {
-      using range_type =
-          typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>>;
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
+      using range_type = typename Kokkos::MDRangePolicy<
+          ExecSpace, Kokkos::LaunchBounds<512, 1>, Kokkos::Rank<6>>;
       using point_type = typename range_type::point_type;
 
       range_type range(point_type{{0, 0, 0, 0, 0, 0}},
@@ -3062,9 +3154,11 @@ struct TestMDRange_6D {
     }
 
     {
-      using range_type =
-          typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>,
-                                         Kokkos::IndexType<int>, InitTag>;
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
+      using range_type = typename Kokkos::MDRangePolicy<
+          ExecSpace, Kokkos::LaunchBounds<512, 1>, Kokkos::Rank<6>,
+          Kokkos::IndexType<int>, InitTag>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
 
@@ -3115,51 +3209,10 @@ struct TestMDRange_6D {
     }
 
     {
-      using range_type =
-          typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>,
-                                         Kokkos::IndexType<int>>;
-      using tile_type  = typename range_type::tile_type;
-      using point_type = typename range_type::point_type;
-
-#ifdef KOKKOS_ENABLE_SYCL
-      range_type range(point_type{{0, 0, 0, 0, 0, 0}},
-                       point_type{{N0, N1, N2, N3, N4, N5}},
-                       tile_type{{4, 4, 2, 2, 2, 2}});
-#else
-      range_type range(point_type{{0, 0, 0, 0, 0, 0}},
-                       point_type{{N0, N1, N2, N3, N4, N5}},
-                       tile_type{{4, 4, 4, 2, 2, 2}});
-#endif
-
-      TestMDRange_6D functor(N0, N1, N2, N3, N4, N5);
-
-      parallel_for(range, functor);
-
-      HostViewType h_view = Kokkos::create_mirror_view(functor.input_view);
-      Kokkos::deep_copy(h_view, functor.input_view);
-
-      int counter = 0;
-      for (int i = 0; i < N0; ++i)
-        for (int j = 0; j < N1; ++j)
-          for (int k = 0; k < N2; ++k)
-            for (int l = 0; l < N3; ++l)
-              for (int m = 0; m < N4; ++m)
-                for (int n = 0; n < N5; ++n) {
-                  if (h_view(i, j, k, l, m, n) != 1) {
-                    ++counter;
-                  }
-                }
-
-      if (counter != 0) {
-        printf(" Errors in test_for6; mismatches = %d\n\n", counter);
-      }
-
-      ASSERT_EQ(counter, 0);
-    }
-
-    {
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
       using range_type = typename Kokkos::MDRangePolicy<
-          ExecSpace, Kokkos::Rank<6, Iterate::Default, Iterate::Default>,
+          ExecSpace, Kokkos::LaunchBounds<512, 1>, Kokkos::Rank<6>,
           Kokkos::IndexType<int>>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
@@ -3201,8 +3254,11 @@ struct TestMDRange_6D {
     }
 
     {
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
       using range_type = typename Kokkos::MDRangePolicy<
-          ExecSpace, Kokkos::Rank<6, Iterate::Left, Iterate::Left>,
+          ExecSpace, Kokkos::LaunchBounds<512, 1>,
+          Kokkos::Rank<6, Iterate::Default, Iterate::Default>,
           Kokkos::IndexType<int>>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
@@ -3244,8 +3300,11 @@ struct TestMDRange_6D {
     }
 
     {
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
       using range_type = typename Kokkos::MDRangePolicy<
-          ExecSpace, Kokkos::Rank<6, Iterate::Left, Iterate::Right>,
+          ExecSpace, Kokkos::LaunchBounds<512, 1>,
+          Kokkos::Rank<6, Iterate::Left, Iterate::Left>,
           Kokkos::IndexType<int>>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
@@ -3287,8 +3346,11 @@ struct TestMDRange_6D {
     }
 
     {
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
       using range_type = typename Kokkos::MDRangePolicy<
-          ExecSpace, Kokkos::Rank<6, Iterate::Right, Iterate::Left>,
+          ExecSpace, Kokkos::LaunchBounds<512, 1>,
+          Kokkos::Rank<6, Iterate::Left, Iterate::Right>,
           Kokkos::IndexType<int>>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
@@ -3330,8 +3392,11 @@ struct TestMDRange_6D {
     }
 
     {
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
       using range_type = typename Kokkos::MDRangePolicy<
-          ExecSpace, Kokkos::Rank<6, Iterate::Right, Iterate::Right>,
+          ExecSpace, Kokkos::LaunchBounds<512, 1>,
+          Kokkos::Rank<6, Iterate::Right, Iterate::Left>,
           Kokkos::IndexType<int>>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
@@ -3371,7 +3436,99 @@ struct TestMDRange_6D {
 
       ASSERT_EQ(counter, 0);
     }
-  }
+
+    {
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
+      using range_type = typename Kokkos::MDRangePolicy<
+          ExecSpace, Kokkos::LaunchBounds<512, 1>,
+          Kokkos::Rank<6, Iterate::Right, Iterate::Right>,
+          Kokkos::IndexType<int>>;
+      using tile_type  = typename range_type::tile_type;
+      using point_type = typename range_type::point_type;
+
+#ifdef KOKKOS_ENABLE_SYCL
+      range_type range(point_type{{0, 0, 0, 0, 0, 0}},
+                       point_type{{N0, N1, N2, N3, N4, N5}},
+                       tile_type{{4, 4, 2, 2, 2, 2}});
+#else
+      range_type range(point_type{{0, 0, 0, 0, 0, 0}},
+                       point_type{{N0, N1, N2, N3, N4, N5}},
+                       tile_type{{4, 4, 4, 2, 2, 2}});
+#endif
+
+      TestMDRange_6D functor(N0, N1, N2, N3, N4, N5);
+
+      parallel_for(range, functor);
+
+      HostViewType h_view = Kokkos::create_mirror_view(functor.input_view);
+      Kokkos::deep_copy(h_view, functor.input_view);
+
+      int counter = 0;
+      for (int i = 0; i < N0; ++i)
+        for (int j = 0; j < N1; ++j)
+          for (int k = 0; k < N2; ++k)
+            for (int l = 0; l < N3; ++l)
+              for (int m = 0; m < N4; ++m)
+                for (int n = 0; n < N5; ++n) {
+                  if (h_view(i, j, k, l, m, n) != 1) {
+                    ++counter;
+                  }
+                }
+
+      if (counter != 0) {
+        printf(" Errors in test_for6; mismatches = %d\n\n", counter);
+      }
+
+      ASSERT_EQ(counter, 0);
+    }
+  }  // test_for6
+
+  // test that each iteration is evaluated only once
+  // see #7697
+  static void test_for6_eval_once(const int N0, const int N1, const int N2,
+                                  const int N3, const int N4, const int N5) {
+    test_for6_eval_once_iterate<Iterate::Left, Iterate::Left>(N0, N1, N2, N3,
+                                                              N4, N5, "LL");
+    test_for6_eval_once_iterate<Iterate::Left, Iterate::Right>(N0, N1, N2, N3,
+                                                               N4, N5, "LR");
+    test_for6_eval_once_iterate<Iterate::Right, Iterate::Left>(N0, N1, N2, N3,
+                                                               N4, N5, "RL");
+    test_for6_eval_once_iterate<Iterate::Right, Iterate::Right>(N0, N1, N2, N3,
+                                                                N4, N5, "RR");
+  }  // end test_for6_eval_once
+
+ private:
+  // test that each iteration is evaluated only once for a specified iteration
+  // order
+  template <Iterate Outer, Iterate Inner>
+  static void test_for6_eval_once_iterate(const int N0, const int N1,
+                                          const int N2, const int N3,
+                                          const int N4, const int N5,
+                                          const char *iterate_msg) {
+    using range_type =
+        typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6, Outer, Inner>,
+                                       Kokkos::IndexType<int>, AtomicTag>;
+    using point_type = typename range_type::point_type;
+
+    range_type range(point_type{{0, 0, 0, 0, 0, 0}},
+                     point_type{{N0, N1, N2, N3, N4, N5}});
+
+    TestMDRange_6D functor(N0, N1, N2, N3, N4, N5);
+
+    Kokkos::parallel_for(range, functor);
+    MinMaxValue min_max_value;
+    DataType sum_value;
+    Kokkos::parallel_reduce(range, functor, MinMax(min_max_value), sum_value);
+
+    std::ostringstream message;
+    message << "For shape (" << N0 << ", " << N1 << ", " << N2 << ", " << N3
+            << ", " << N4 << ", " << N5 << ") and iterate order "
+            << iterate_msg;
+    ASSERT_EQ(min_max_value.min_val, 1) << message.str();
+    ASSERT_EQ(min_max_value.max_val, 1) << message.str();
+    ASSERT_EQ(sum_value, N0 * N1 * N2 * N3 * N4 * N5) << message.str();
+  }  // end test_for6_eval_once_iterate
 };
 
 template <typename ExecSpace>
@@ -3683,9 +3840,11 @@ struct TestMDRange_6D_NegIdx {
   static void test_6D_negidx(const int N0, const int N1, const int N2,
                              const int N3, const int N4, const int N5) {
     {
-      using range_type =
-          typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<6>,
-                                         Kokkos::IndexType<int>>;
+      // Launchbounds to ensure the tile fits into a CUDA block under register
+      // constraints
+      using range_type = typename Kokkos::MDRangePolicy<
+          ExecSpace, Kokkos::LaunchBounds<256, 1>, Kokkos::Rank<6>,
+          Kokkos::IndexType<int>>;
       using tile_type  = typename range_type::tile_type;
       using point_type = typename range_type::point_type;
 
@@ -3730,24 +3889,16 @@ struct TestMDRange_ReduceScalar {
     }
     KOKKOS_INLINE_FUNCTION
     void operator=(const Scalar &src) {
+      if (&src == this) return;
       for (int i = 0; i < 4; i++) v[i] = src.v[i];
     }
     KOKKOS_INLINE_FUNCTION
     void operator+=(const Scalar &src) {
       for (int i = 0; i < 4; i++) v[i] += src.v[i];
     }
-    KOKKOS_INLINE_FUNCTION
-    void operator=(const volatile Scalar &src) volatile {
-      for (int i = 0; i < 4; i++) v[i] = src.v[i];
-    }
-    KOKKOS_INLINE_FUNCTION
-    void operator+=(const volatile Scalar &src) volatile {
-      for (int i = 0; i < 4; i++) v[i] += src.v[i];
-    }
   };
 
   static void test_scalar_reduce(const int N0, const int N1) {
-#if defined(KOKKOS_ENABLE_CXX11_DISPATCH_LAMBDA)
     Scalar sum;
     using range_type =
         typename Kokkos::MDRangePolicy<ExecSpace, Kokkos::Rank<2>,
@@ -3765,10 +3916,6 @@ struct TestMDRange_ReduceScalar {
         },
         sum);
     for (int i = 0; i < 4; i++) ASSERT_EQ(sum.v[i], N0 * N1);
-#else
-    std::ignore = N0;
-    std::ignore = N1;
-#endif
   }
 };
 

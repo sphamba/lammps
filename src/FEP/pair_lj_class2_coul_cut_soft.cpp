@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -14,17 +14,17 @@
 
 #include "pair_lj_class2_coul_cut_soft.h"
 
-#include <cmath>
-#include <cstring>
 #include "atom.h"
 #include "comm.h"
+#include "error.h"
 #include "force.h"
-#include "neighbor.h"
-#include "neigh_list.h"
 #include "math_const.h"
 #include "memory.h"
-#include "error.h"
+#include "neigh_list.h"
+#include "neighbor.h"
 
+#include <cmath>
+#include <cstring>
 
 using namespace LAMMPS_NS;
 using namespace MathConst;
@@ -226,7 +226,7 @@ void PairLJClass2CoulCutSoft::settings(int narg, char **arg)
 
 void PairLJClass2CoulCutSoft::coeff(int narg, char **arg)
 {
-  if (narg < 5 || narg > 7) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (narg < 5 || narg > 7) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -237,7 +237,7 @@ void PairLJClass2CoulCutSoft::coeff(int narg, char **arg)
   double sigma_one = utils::numeric(FLERR,arg[3],false,lmp);
   double lambda_one = utils::numeric(FLERR,arg[4],false,lmp);
   if (sigma_one <= 0.0)
-    error->all(FLERR,"Incorrect args for pair coefficients");
+    error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 
   double cut_lj_one = cut_lj_global;
   double cut_coul_one = cut_coul_global;
@@ -257,7 +257,7 @@ void PairLJClass2CoulCutSoft::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -269,7 +269,7 @@ void PairLJClass2CoulCutSoft::init_style()
   if (!atom->q_flag)
     error->all(FLERR,"Pair style lj/class2/coul/cut/soft requires atom attribute q");
 
-  neighbor->request(this,instance_me);
+  neighbor->add_request(this);
 }
 
 /* ----------------------------------------------------------------------

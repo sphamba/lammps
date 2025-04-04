@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -39,14 +39,10 @@ using namespace LAMMPS_NS;
 using namespace MathConst;
 using namespace MathSpecial;
 
-#ifdef FFT_SINGLE
-#define ZEROF 0.0f
-#else
-#define ZEROF 0.0
-#endif
+static constexpr FFT_SCALAR ZEROF = 0.0;
 
-#define EPS_HOC 1.0e-7
-#define OFFSET 16384
+static constexpr double EPS_HOC = 1.0e-7;
+static constexpr int OFFSET = 16384;
 
 /* ---------------------------------------------------------------------- */
 
@@ -346,15 +342,15 @@ void PPPMTIP4POMP::particle_map()
   if (atom->nlocal == 0) return;
 
   const int * _noalias const type = atom->type;
-  const dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
-  int3_t * _noalias const p2g = (int3_t *) part2grid[0];
+  const auto * _noalias const x = (dbl3_t *) atom->x[0];
+  auto * _noalias const p2g = (int3_t *) part2grid[0];
   const double boxlox = boxlo[0];
   const double boxloy = boxlo[1];
   const double boxloz = boxlo[2];
   const int nlocal = atom->nlocal;
 
   if (!std::isfinite(boxlox) || !std::isfinite(boxloy) || !std::isfinite(boxloz))
-    error->one(FLERR,"Non-numeric box dimensions - simulation unstable");
+    error->one(FLERR,"Non-numeric box dimensions - simulation unstable" + utils::errorurl(6));
 
   int flag = 0;
 #if defined(_OPENMP)
@@ -392,7 +388,7 @@ void PPPMTIP4POMP::particle_map()
 
   int flag_all;
   MPI_Allreduce(&flag,&flag_all,1,MPI_INT,MPI_SUM,world);
-  if (flag_all) error->all(FLERR,"Out of range atoms - cannot compute PPPM");
+  if (flag_all) error->all(FLERR, Error::NOLASTLINE, "Out of range atoms - cannot compute PPPM" + utils::errorurl(4));
 }
 
 /* ----------------------------------------------------------------------
@@ -423,8 +419,8 @@ void PPPMTIP4POMP::make_rho()
 #endif
   {
     const double * _noalias const q = atom->q;
-    const dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
-    const int3_t * _noalias const p2g = (int3_t *) part2grid[0];
+    const auto * _noalias const x = (dbl3_t *) atom->x[0];
+    const auto * _noalias const p2g = (int3_t *) part2grid[0];
     const int * _noalias const type = atom->type;
     dbl3_t xM;
 
@@ -513,9 +509,9 @@ void PPPMTIP4POMP::fieldforce_ik()
   // (mx,my,mz) = global coords of moving stencil pt
   // ek = 3 components of E-field on particle
 
-  const dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
+  const auto * _noalias const x = (dbl3_t *) atom->x[0];
   const double * _noalias const q = atom->q;
-  const int3_t * _noalias const p2g = (int3_t *) part2grid[0];
+  const auto * _noalias const p2g = (int3_t *) part2grid[0];
   const int * _noalias const type = atom->type;
 
   const double qqrd2e = force->qqrd2e;
@@ -536,7 +532,7 @@ void PPPMTIP4POMP::fieldforce_ik()
     // get per thread data
     ThrData *thr = fix->get_thr(tid);
     thr->timer(Timer::START);
-    dbl3_t * _noalias const f = (dbl3_t *) thr->get_f()[0];
+    auto * _noalias const f = (dbl3_t *) thr->get_f()[0];
     FFT_SCALAR * const * const r1d = static_cast<FFT_SCALAR **>(thr->get_rho1d());
 
     for (i = ifrom; i < ito; ++i) {
@@ -624,9 +620,9 @@ void PPPMTIP4POMP::fieldforce_ad()
   // (mx,my,mz) = global coords of moving stencil pt
   // ek = 3 components of E-field on particle
 
-  const dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
+  const auto * _noalias const x = (dbl3_t *) atom->x[0];
   const double * _noalias const q = atom->q;
-  const int3_t * _noalias const p2g = (int3_t *) part2grid[0];
+  const auto * _noalias const p2g = (int3_t *) part2grid[0];
   const int * _noalias const type = atom->type;
 
   const double qqrd2e = force->qqrd2e;
@@ -648,7 +644,7 @@ void PPPMTIP4POMP::fieldforce_ad()
     // get per thread data
     ThrData *thr = fix->get_thr(tid);
     thr->timer(Timer::START);
-    dbl3_t * _noalias const f = (dbl3_t *) thr->get_f()[0];
+    auto * _noalias const f = (dbl3_t *) thr->get_f()[0];
     FFT_SCALAR * const * const r1d = static_cast<FFT_SCALAR **>(thr->get_rho1d());
     FFT_SCALAR * const * const d1d = static_cast<FFT_SCALAR **>(thr->get_drho1d());
 
@@ -837,7 +833,7 @@ void PPPMTIP4POMP::find_M_thr(int i, int &iH1, int &iH2, dbl3_t &xM)
     iH1 = domain->closest_image(i,iH1);
     iH2 = domain->closest_image(i,iH2);
 
-    const dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
+    const auto * _noalias const x = (dbl3_t *) atom->x[0];
 
     double delx1 = x[iH1].x - x[i].x;
     double dely1 = x[iH1].y - x[i].y;

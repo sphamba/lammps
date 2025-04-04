@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -9,6 +9,10 @@
    the GNU General Public License.
 
    See the README file in the top-level LAMMPS directory.
+------------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------
+   Contributing authors: Joel Clemmer (SNL), Ishan Srivastava (LBNL)
 ------------------------------------------------------------------------- */
 
 #include "compute_fabric.h"
@@ -89,8 +93,8 @@ ComputeFabric::ComputeFabric(LAMMPS *lmp, int narg, char **arg) :
         }
       }
 
-      std::vector<std::string> iwords = Tokenizer(arg[iarg+1], ",").as_vector();
-      std::vector<std::string> jwords = Tokenizer(arg[iarg+2], ",").as_vector();
+      std::vector<std::string> iwords = Tokenizer(arg[iarg + 1], ",").as_vector();
+      std::vector<std::string> jwords = Tokenizer(arg[iarg + 2], ",").as_vector();
       for (const auto &ifield : iwords) {
         utils::bounds(FLERR, ifield, 1, ntypes, inlo, inhi, error);
 
@@ -152,12 +156,11 @@ void ComputeFabric::init()
   // set size to same value as request made by force->pair
   // this should enable it to always be a copy list (e.g. for granular pstyle)
 
-  int irequest = neighbor->request(this, instance_me);
-  neighbor->requests[irequest]->pair = 0;
-  neighbor->requests[irequest]->compute = 1;
-  neighbor->requests[irequest]->occasional = 1;
-  NeighRequest *pairrequest = neighbor->find_request((void *) force->pair);
-  if (pairrequest) neighbor->requests[irequest]->size = pairrequest->size;
+  auto pairrequest = neighbor->find_request(force->pair);
+  if (pairrequest && pairrequest->get_size())
+    neighbor->add_request(this, NeighConst::REQ_SIZE | NeighConst::REQ_OCCASIONAL);
+  else
+    neighbor->add_request(this, NeighConst::REQ_OCCASIONAL);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -181,7 +184,7 @@ void ComputeFabric::compute_vector()
   double nx, ny, nz;
   double ncinv, denom, fn, ft, prefactor;
   double br_tensor[6], ft_tensor[6], fn_tensor[6];
-  double trace_phi, trace_D, trace_Xfn, trace_Xft;
+  double trace_third_phi, trace_third_D, trace_third_Xfn, trace_third_Xft;
   double phi_ij[6] = {0.0};
   double Ac_ij[6] = {0.0};
   double D_ij[6] = {0.0};
@@ -292,11 +295,11 @@ void ComputeFabric::compute_vector()
   MPI_Allreduce(phi_ij, temp_dbl, 6, MPI_DOUBLE, MPI_SUM, world);
   for (i = 0; i < 6; i++) phi_ij[i] = temp_dbl[i] * ncinv;
 
-  trace_phi = (1.0 / 3.0) * (phi_ij[0] + phi_ij[1] + phi_ij[2]);
+  trace_third_phi = (1.0 / 3.0) * (phi_ij[0] + phi_ij[1] + phi_ij[2]);
 
-  Ac_ij[0] = (15.0 / 2.0) * (phi_ij[0] - trace_phi);
-  Ac_ij[1] = (15.0 / 2.0) * (phi_ij[1] - trace_phi);
-  Ac_ij[2] = (15.0 / 2.0) * (phi_ij[2] - trace_phi);
+  Ac_ij[0] = (15.0 / 2.0) * (phi_ij[0] - trace_third_phi);
+  Ac_ij[1] = (15.0 / 2.0) * (phi_ij[1] - trace_third_phi);
+  Ac_ij[2] = (15.0 / 2.0) * (phi_ij[2] - trace_third_phi);
   Ac_ij[3] = (15.0 / 2.0) * (phi_ij[3]);
   Ac_ij[4] = (15.0 / 2.0) * (phi_ij[4]);
   Ac_ij[5] = (15.0 / 2.0) * (phi_ij[5]);
@@ -416,14 +419,14 @@ void ComputeFabric::compute_vector()
     MPI_Allreduce(D_ij, temp_dbl, 6, MPI_DOUBLE, MPI_SUM, world);
     for (i = 0; i < 6; i++) D_ij[i] = temp_dbl[i];
 
-    trace_D = (1.0 / 3.0) * (D_ij[0] + D_ij[1] + D_ij[2]);
+    trace_third_D = (1.0 / 3.0) * (D_ij[0] + D_ij[1] + D_ij[2]);
 
-    br_tensor[0] = (15.0 / (6.0 * trace_D)) * (D_ij[0] - trace_D);
-    br_tensor[1] = (15.0 / (6.0 * trace_D)) * (D_ij[1] - trace_D);
-    br_tensor[2] = (15.0 / (6.0 * trace_D)) * (D_ij[2] - trace_D);
-    br_tensor[3] = (15.0 / (6.0 * trace_D)) * (D_ij[3]);
-    br_tensor[4] = (15.0 / (6.0 * trace_D)) * (D_ij[4]);
-    br_tensor[5] = (15.0 / (6.0 * trace_D)) * (D_ij[5]);
+    br_tensor[0] = (15.0 / (6.0 * trace_third_D)) * (D_ij[0] - trace_third_D);
+    br_tensor[1] = (15.0 / (6.0 * trace_third_D)) * (D_ij[1] - trace_third_D);
+    br_tensor[2] = (15.0 / (6.0 * trace_third_D)) * (D_ij[2] - trace_third_D);
+    br_tensor[3] = (15.0 / (6.0 * trace_third_D)) * (D_ij[3]);
+    br_tensor[4] = (15.0 / (6.0 * trace_third_D)) * (D_ij[4]);
+    br_tensor[5] = (15.0 / (6.0 * trace_third_D)) * (D_ij[5]);
 
     for (i = 0; i < ntensors; i++) {
       if (tensor_style[i] == BR) {
@@ -436,17 +439,17 @@ void ComputeFabric::compute_vector()
     MPI_Allreduce(Xfn_ij, temp_dbl, 6, MPI_DOUBLE, MPI_SUM, world);
     for (i = 0; i < 6; i++) Xfn_ij[i] = temp_dbl[i];
 
-    trace_Xfn = (1.0 / 3.0) * (Xfn_ij[0] + Xfn_ij[1] + Xfn_ij[2]);
+    trace_third_Xfn = (1.0 / 3.0) * (Xfn_ij[0] + Xfn_ij[1] + Xfn_ij[2]);
   }
 
   if (fn_flag) {
 
-    fn_tensor[0] = (15.0 / (6.0 * trace_Xfn)) * (Xfn_ij[0] - trace_Xfn);
-    fn_tensor[1] = (15.0 / (6.0 * trace_Xfn)) * (Xfn_ij[1] - trace_Xfn);
-    fn_tensor[2] = (15.0 / (6.0 * trace_Xfn)) * (Xfn_ij[2] - trace_Xfn);
-    fn_tensor[3] = (15.0 / (6.0 * trace_Xfn)) * (Xfn_ij[3]);
-    fn_tensor[4] = (15.0 / (6.0 * trace_Xfn)) * (Xfn_ij[4]);
-    fn_tensor[5] = (15.0 / (6.0 * trace_Xfn)) * (Xfn_ij[5]);
+    fn_tensor[0] = (15.0 / (6.0 * trace_third_Xfn)) * (Xfn_ij[0] - trace_third_Xfn);
+    fn_tensor[1] = (15.0 / (6.0 * trace_third_Xfn)) * (Xfn_ij[1] - trace_third_Xfn);
+    fn_tensor[2] = (15.0 / (6.0 * trace_third_Xfn)) * (Xfn_ij[2] - trace_third_Xfn);
+    fn_tensor[3] = (15.0 / (6.0 * trace_third_Xfn)) * (Xfn_ij[3]);
+    fn_tensor[4] = (15.0 / (6.0 * trace_third_Xfn)) * (Xfn_ij[4]);
+    fn_tensor[5] = (15.0 / (6.0 * trace_third_Xfn)) * (Xfn_ij[5]);
 
     for (i = 0; i < ntensors; i++) {
       if (tensor_style[i] == FN) {
@@ -459,14 +462,14 @@ void ComputeFabric::compute_vector()
     MPI_Allreduce(Xft_ij, temp_dbl, 6, MPI_DOUBLE, MPI_SUM, world);
     for (i = 0; i < 6; i++) Xft_ij[i] = temp_dbl[i];
 
-    trace_Xft = (1.0 / 3.0) * (Xft_ij[0] + Xft_ij[1] + Xft_ij[2]);
+    trace_third_Xft = (1.0 / 3.0) * (Xft_ij[0] + Xft_ij[1] + Xft_ij[2]);
 
-    ft_tensor[0] = (15.0 / (9.0 * trace_Xfn)) * (Xft_ij[0] - trace_Xft);
-    ft_tensor[1] = (15.0 / (9.0 * trace_Xfn)) * (Xft_ij[1] - trace_Xft);
-    ft_tensor[2] = (15.0 / (9.0 * trace_Xfn)) * (Xft_ij[2] - trace_Xft);
-    ft_tensor[3] = (15.0 / (9.0 * trace_Xfn)) * (Xft_ij[3]);
-    ft_tensor[4] = (15.0 / (9.0 * trace_Xfn)) * (Xft_ij[4]);
-    ft_tensor[5] = (15.0 / (9.0 * trace_Xfn)) * (Xft_ij[5]);
+    ft_tensor[0] = (15.0 / (9.0 * trace_third_Xfn)) * (Xft_ij[0] - trace_third_Xft);
+    ft_tensor[1] = (15.0 / (9.0 * trace_third_Xfn)) * (Xft_ij[1] - trace_third_Xft);
+    ft_tensor[2] = (15.0 / (9.0 * trace_third_Xfn)) * (Xft_ij[2] - trace_third_Xft);
+    ft_tensor[3] = (15.0 / (9.0 * trace_third_Xfn)) * (Xft_ij[3]);
+    ft_tensor[4] = (15.0 / (9.0 * trace_third_Xfn)) * (Xft_ij[4]);
+    ft_tensor[5] = (15.0 / (9.0 * trace_third_Xfn)) * (Xft_ij[5]);
 
     for (i = 0; i < ntensors; i++) {
       if (tensor_style[i] == FT) {

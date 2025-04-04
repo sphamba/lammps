@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -28,12 +28,12 @@
 #include <cmath>
 #include <cstring>
 
-#define MAXLINE 1024
+static constexpr int MAXLINE = 1024;
 
 #ifdef DBL_EPSILON
-  #define MY_EPSILON (10.0*DBL_EPSILON)
+static constexpr double MY_EPSILON = 10.0*DBL_EPSILON;
 #else
-  #define MY_EPSILON (10.0*2.220446049250313e-16)
+static constexpr double MY_EPSILON = 10.0*2.220446049250313e-16;
 #endif
 
 using namespace LAMMPS_NS;
@@ -134,11 +134,11 @@ FixEOStableRX::FixEOStableRX(LAMMPS *lmp, int narg, char **arg) :
   }
 
   if (rx_flag) read_file(arg[7]);
-  else dHf[0] = atof(arg[7]);
+  else dHf[0] = std::stod(arg[7]);
 
   if (narg==10) {
-    energyCorr[0] = atof(arg[8]);
-    tempCorrCoeff[0] = atof(arg[9]);
+    energyCorr[0] = std::stod(arg[8]);
+    tempCorrCoeff[0] = std::stod(arg[9]);
   }
 
   comm_forward = 3;
@@ -203,7 +203,7 @@ void FixEOStableRX::setup(int /*vflag*/)
   }
 
   // Communicate the updated momenta and velocities to all nodes
-  comm->forward_comm_fix(this);
+  comm->forward_comm(this);
 
   for (int i = 0; i < nlocal; i++)
     if (mask[i] & groupbit)
@@ -274,7 +274,7 @@ void FixEOStableRX::end_of_step()
   double *uCGnew = atom->uCGnew;
 
   // Communicate the ghost uCGnew
-  comm->reverse_comm_fix(this);
+  comm->reverse_comm(this);
 
   for (int i = 0; i < nlocal; i++)
     if (mask[i] & groupbit) {
@@ -285,7 +285,7 @@ void FixEOStableRX::end_of_step()
     }
 
   // Communicate the updated momenta and velocities to all nodes
-  comm->forward_comm_fix(this);
+  comm->forward_comm(this);
 
   for (int i = 0; i < nlocal; i++)
     if (mask[i] & groupbit) {
@@ -301,7 +301,7 @@ void FixEOStableRX::read_file(char *file)
 {
   int min_params_per_line = 2;
   int max_params_per_line = 5;
-  char **words = new char*[max_params_per_line+1];
+  auto words = new char*[max_params_per_line+1];
 
   // open file on proc 0
 
@@ -318,10 +318,11 @@ void FixEOStableRX::read_file(char *file)
 
   // one set of params can span multiple lines
   int n,nwords,ispecies;
-  char line[MAXLINE],*ptr;
+  char line[MAXLINE] = {'\0'};
+  char *ptr;
   int eof = 0;
 
-  while (1) {
+  while (true) {
     if (comm->me == 0) {
       ptr = fgets(line,MAXLINE,fp);
       if (ptr == nullptr) {
@@ -372,11 +373,11 @@ void FixEOStableRX::read_file(char *file)
       if (strcmp(words[0],&atom->dvname[ispecies][0]) == 0) break;
 
     if (ispecies < nspecies) {
-      dHf[ispecies] = atof(words[1]);
+      dHf[ispecies] = std::stod(words[1]);
       if (nwords > min_params_per_line+1) {
-        energyCorr[ispecies] = atof(words[2]);
-        tempCorrCoeff[ispecies] = atof(words[3]);
-        moleculeCorrCoeff[ispecies] = atof(words[4]);
+        energyCorr[ispecies] = std::stod(words[2]);
+        tempCorrCoeff[ispecies] = std::stod(words[3]);
+        moleculeCorrCoeff[ispecies] = std::stod(words[4]);
       }
     }
   }
@@ -414,7 +415,7 @@ void FixEOStableRX::free_table(Table *tb)
 
 void FixEOStableRX::read_table(Table *tb, Table *tb2, char *file, char *keyword)
 {
-  char line[MAXLINE];
+  char line[MAXLINE] = {'\0'};
 
   // open file
 
@@ -427,7 +428,7 @@ void FixEOStableRX::read_table(Table *tb, Table *tb2, char *file, char *keyword)
 
   // loop until section found with matching keyword
 
-  while (1) {
+  while (true) {
     if (fgets(line,MAXLINE,fp) == nullptr)
       error->one(FLERR,"Did not find keyword in table file");
     if (strspn(line," \t\n\r") == strlen(line)) continue;    // blank line
@@ -476,23 +477,21 @@ void FixEOStableRX::read_table(Table *tb, Table *tb2, char *file, char *keyword)
     utils::sfgets(FLERR,line,MAXLINE,fp,file,error);
 
     nwords = utils::count_words(utils::trim_comment(line));
-    if (nwords != nspecies+2) {
-      printf("nwords=%d  nspecies=%d\n",nwords,nspecies);
-      error->all(FLERR,"Illegal fix eos/table/rx command");
-    }
-    nwords = 0;
+    if (nwords != nspecies+2)
+      error->all(FLERR,"Illegal fix eos/table/rx command: nwords={} nspecies={}", nwords, nspecies);
+
     word = strtok(line," \t\n\r\f");
     word = strtok(nullptr," \t\n\r\f");
-    rtmp = atof(word);
+    rtmp = std::stod(word);
 
-    for (int icolumn=0;icolumn<ncolumn;icolumn++) {
+    for (int icolumn=0; icolumn < ncolumn; icolumn++) {
       ispecies = eosSpecies[icolumn];
 
       Table *tbl = &tables[ispecies];
       Table *tbl2 = &tables2[ispecies];
 
       word = strtok(nullptr," \t\n\r\f");
-      tmpE = atof(word);
+      tmpE = std::stod(word);
 
       tbl->rfile[i] = rtmp;
       tbl->efile[i] = tmpE;
@@ -575,7 +574,7 @@ void FixEOStableRX::param_extract(Table *tb, char *line)
   char *word = strtok(line," \t\n\r\f");
   if (strcmp(word,"N") == 0) {
     word = strtok(nullptr," \t\n\r\f");
-    tb->ninput = atoi(word);
+    tb->ninput = std::stoi(word);
   } else
     error->one(FLERR,"Invalid keyword in fix eos/table/rx parameters");
   word = strtok(nullptr," \t\n\r\f");
@@ -641,7 +640,7 @@ void FixEOStableRX::spline(double *x, double *y, int n,
 {
   int i,k;
   double p,qn,sig,un;
-  double *u = new double[n];
+  auto u = new double[n];
 
   if (yp1 > 0.99e30) y2[0] = u[0] = 0.0;
   else {

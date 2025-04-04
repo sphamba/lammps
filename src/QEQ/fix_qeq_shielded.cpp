@@ -1,8 +1,7 @@
-// clang-format off
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -25,7 +24,6 @@
 #include "kspace.h"
 #include "memory.h"
 #include "neigh_list.h"
-#include "neigh_request.h"
 #include "neighbor.h"
 #include "pair.h"
 #include "update.h"
@@ -35,15 +33,19 @@
 
 using namespace LAMMPS_NS;
 
+static constexpr double EV_TO_KCAL_PER_MOL = 14.4;
+
 /* ---------------------------------------------------------------------- */
 
-FixQEqShielded::FixQEqShielded(LAMMPS *lmp, int narg, char **arg) :
-  FixQEq(lmp, narg, arg) {
+FixQEqShielded::FixQEqShielded(LAMMPS *lmp, int narg, char **arg) : FixQEq(lmp, narg, arg)
+{
   if (narg == 10) {
-    if (strcmp(arg[8],"warn") == 0) {
-      maxwarn = utils::logical(FLERR,arg[9],false,lmp);
-    } else error->all(FLERR,"Illegal fix qeq/shielded command");
-  } else if (narg > 8) error->all(FLERR,"Illegal fix qeq/shielded command");
+    if (strcmp(arg[8], "warn") == 0) {
+      maxwarn = utils::logical(FLERR, arg[9], false, lmp);
+    } else
+      error->all(FLERR, "Illegal fix qeq/shielded command");
+  } else if (narg > 8)
+    error->all(FLERR, "Illegal fix qeq/shielded command");
   if (reax_flag) extract_reax();
 }
 
@@ -53,39 +55,59 @@ void FixQEqShielded::init()
 {
   FixQEq::init();
 
-  int irequest = neighbor->request(this,instance_me);
-  neighbor->requests[irequest]->pair = 0;
-  neighbor->requests[irequest]->fix  = 1;
-  neighbor->requests[irequest]->half = 0;
-  neighbor->requests[irequest]->full = 1;
+  neighbor->add_request(this, NeighConst::REQ_FULL);
 
-  int ntypes = atom->ntypes;
-  memory->create(shld,ntypes+1,ntypes+1,"qeq:shielding");
+  const int ntypes = atom->ntypes;
+  memory->destroy(shld);
+  memory->create(shld, ntypes + 1, ntypes + 1, "qeq:shielding");
 
   init_shielding();
 
-  int i;
-  for (i = 1; i <= ntypes; i++) {
-    if (gamma[i] == 0.0)
-      error->all(FLERR,"Invalid param file for fix qeq/shielded");
+  // check if valid parameters for all atom types in the fix group are provided
+  const int *type = atom->type;
+  const int *mask = atom->mask;
+  int tmp = 0, tmp_all = 0;
+  for (int i = 0; i < nlocal; ++i) {
+    if (mask[i] & groupbit) {
+      if (gamma[type[i]] == 0.0)
+        tmp = type[i];
+    }
   }
+  MPI_Allreduce(&tmp, &tmp_all, 1, MPI_INT, MPI_MAX, world);
+  if (tmp_all)
+    error->all(FLERR, "Invalid QEq parameters for atom type {} provided", tmp_all);
 }
 
 /* ---------------------------------------------------------------------- */
 
 void FixQEqShielded::extract_reax()
 {
-  Pair *pair = force->pair_match("^reax..",0);
-  if (pair == nullptr) error->all(FLERR,"No pair reaxff for fix qeq/shielded");
-  int tmp;
-  chi = (double *) pair->extract("chi",tmp);
-  eta = (double *) pair->extract("eta",tmp);
-  gamma = (double *) pair->extract("gamma",tmp);
-  if (chi == nullptr || eta == nullptr || gamma == nullptr)
-    error->all(FLERR, "Fix qeq/shielded could not extract params from pair reaxff");
+  const int nlocal = atom->nlocal;
+  const int *mask = atom->mask;
+  const int *type = atom->type;
+
+  Pair *pair = force->pair_match("^reaxff", 0);
+  if (pair == nullptr) error->all(FLERR, "No reaxff pair style for fix qeq/shielded");
+  int tmp, tmp_all;
+  chi = (double *) pair->extract("chi", tmp);
+  eta = (double *) pair->extract("eta", tmp);
+  gamma = (double *) pair->extract("gamma", tmp);
+  if ((chi == nullptr) || (eta == nullptr) || (gamma == nullptr))
+    error->all(FLERR, "Fix qeq/shielded could not extract all QEq parameters from pair reaxff");
+
+  tmp = tmp_all = 0;
+  for (int i = 0; i < nlocal; ++i) {
+    if (mask[i] & groupbit) {
+      if ((chi[type[i]] == 0.0) && (eta[type[i]] == 0.0) && (gamma[type[i]] == 0.0))
+        tmp = type[i];
+    }
+  }
+  MPI_Allreduce(&tmp, &tmp_all, 1, MPI_INT, MPI_MAX, world);
+  if (tmp_all)
+    error->all(FLERR, "No QEq parameters for atom type {} provided by pair reaxff", tmp_all);
 }
 
-
+// clang-format off
 /* ---------------------------------------------------------------------- */
 
 void FixQEqShielded::init_shielding()
@@ -168,9 +190,9 @@ void FixQEqShielded::init_matvec()
   }
 
   pack_flag = 2;
-  comm->forward_comm_fix(this); //Dist_vector(s);
+  comm->forward_comm(this); //Dist_vector(s);
   pack_flag = 3;
-  comm->forward_comm_fix(this); //Dist_vector(t);
+  comm->forward_comm(this); //Dist_vector(t);
 }
 
 /* ---------------------------------------------------------------------- */

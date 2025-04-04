@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -14,11 +14,8 @@
 #ifndef LMP_ERROR_H
 #define LMP_ERROR_H
 
-#include "pointers.h"
-
-#ifdef LAMMPS_EXCEPTIONS
 #include "exceptions.h"
-#endif
+#include "pointers.h"
 
 namespace LAMMPS_NS {
 
@@ -30,32 +27,65 @@ class Error : protected Pointers {
   [[noreturn]] void universe_one(const std::string &, int, const std::string &);
   void universe_warn(const std::string &, int, const std::string &);
 
-  [[noreturn]] void all(const std::string &, int, const std::string &);
-  template <typename S, typename... Args>
-  void all(const std::string &file, int line, const S &format, Args &&...args)
+  static constexpr int NOPOINTER = -2;
+  static constexpr int NOLASTLINE = -3;
+  static constexpr int ARGZERO = -99;
+
+  // regular error calls
+
+  [[noreturn]] void all(const std::string &file, int line, const std::string &str)
   {
-    _all(file, line, format, fmt::make_args_checked<Args...>(format, args...));
+    all(file, line, NOPOINTER, str);
   }
 
-  [[noreturn]] void one(const std::string &, int, const std::string &);
-  template <typename S, typename... Args>
-  void one(const std::string &file, int line, const S &format, Args &&...args)
+  template <typename... Args>
+  [[noreturn]] void all(const std::string &file, int line, const std::string &format,
+                        Args &&...args)
   {
-    _one(file, line, format, fmt::make_args_checked<Args...>(format, args...));
+    _all(file, line, NOPOINTER, format, fmt::make_format_args(args...));
+  }
+
+  [[noreturn]] void one(const std::string &file, int line, const std::string &str)
+  {
+    one(file, line, NOPOINTER, str);
+  }
+
+  template <typename... Args>
+  [[noreturn]] void one(const std::string &file, int line, const std::string &format,
+                        Args &&...args)
+  {
+    _one(file, line, NOPOINTER, format, fmt::make_format_args(args...));
+  }
+
+  // overloaded error calls indicating faulty argument in command line
+  [[noreturn]] void all(const std::string &, int, int, const std::string &);
+  template <typename... Args>
+  [[noreturn]] void all(const std::string &file, int line, int failed, const std::string &format,
+                        Args &&...args)
+  {
+    _all(file, line, failed, format, fmt::make_format_args(args...));
+  }
+
+  [[noreturn]] void one(const std::string &, int, int, const std::string &);
+  template <typename... Args>
+  [[noreturn]] void one(const std::string &file, int line, int failed, const std::string &format,
+                        Args &&...args)
+  {
+    _one(file, line, failed, format, fmt::make_format_args(args...));
   }
 
   void warning(const std::string &, int, const std::string &);
-  template <typename S, typename... Args>
-  void warning(const std::string &file, int line, const S &format, Args &&...args)
+  template <typename... Args>
+  void warning(const std::string &file, int line, const std::string &format, Args &&...args)
   {
-    _warning(file, line, format, fmt::make_args_checked<Args...>(format, args...));
+    _warning(file, line, format, fmt::make_format_args(args...));
   }
 
   void message(const std::string &, int, const std::string &);
-  template <typename S, typename... Args>
-  void message(const std::string &file, int line, const S &format, Args &&...args)
+  template <typename... Args>
+  void message(const std::string &file, int line, const std::string &format, Args &&...args)
   {
-    _message(file, line, format, fmt::make_args_checked<Args...>(format, args...));
+    _message(file, line, format, fmt::make_format_args(args...));
   }
   [[noreturn]] void done(int = 0);    // 1 would be fully backwards compatible
 
@@ -65,21 +95,19 @@ class Error : protected Pointers {
   void set_maxwarn(int val) { maxwarn = val; }
   void set_allwarn(int val) { allwarn = val; }
 
-#ifdef LAMMPS_EXCEPTIONS
   std::string get_last_error() const;
   ErrorType get_last_error_type() const;
-  void set_last_error(const std::string &msg, ErrorType type = ERROR_NORMAL);
+  void set_last_error(const char *msg, ErrorType type = ERROR_NORMAL);
+  int set_show_error(const int flag);
 
  private:
   std::string last_error_message;
   ErrorType last_error_type;
-#endif
 
- private:
-  int numwarn, maxwarn, allwarn;
+  int numwarn, maxwarn, allwarn, showerror;
   // internal versions that accept explicit fmtlib arguments
-  [[noreturn]] void _all(const std::string &, int, fmt::string_view, fmt::format_args args);
-  [[noreturn]] void _one(const std::string &, int, fmt::string_view, fmt::format_args args);
+  [[noreturn]] void _all(const std::string &, int, int, fmt::string_view, fmt::format_args args);
+  [[noreturn]] void _one(const std::string &, int, int, fmt::string_view, fmt::format_args args);
   void _warning(const std::string &, int, fmt::string_view, fmt::format_args args);
   void _message(const std::string &, int, fmt::string_view, fmt::format_args args);
 };
@@ -87,7 +115,3 @@ class Error : protected Pointers {
 }    // namespace LAMMPS_NS
 
 #endif
-
-/* ERROR/WARNING messages:
-
-*/

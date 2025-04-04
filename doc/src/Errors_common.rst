@@ -39,7 +39,8 @@ figure out your physics or numerical mistakes, like choosing too big a
 timestep, specifying erroneous force field coefficients, or putting 2
 atoms on top of each other!  If you run into errors that LAMMPS
 does not catch that you think it should flag, please send an email to
-the `developers <https://www.lammps.org/authors.html>`_.
+the `developers <https://www.lammps.org/authors.html>`_ or create an new
+topic on the dedicated `MatSci forum section <https://matsci.org/lammps/>`_.
 
 If you get an error message about an invalid command in your input
 script, you can determine what command is causing the problem by
@@ -113,7 +114,7 @@ LAMMPS output, something is wrong with your simulation.  If you
 suspect this is happening, it is a good idea to print out
 thermodynamic info frequently (e.g. every timestep) via the
 :doc:`thermo <thermo>` so you can monitor what is happening.
-Visualizing the atom movement is also a good idea to insure your model
+Visualizing the atom movement is also a good idea to ensure your model
 is behaving as you expect.
 
 In parallel, one way LAMMPS can hang is due to how different MPI

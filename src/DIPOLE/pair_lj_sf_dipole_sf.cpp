@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -34,12 +34,6 @@
 using namespace LAMMPS_NS;
 
 static int warn_single = 0;
-
-/* ---------------------------------------------------------------------- */
-
-PairLJSFDipoleSF::PairLJSFDipoleSF(LAMMPS *lmp) : Pair(lmp)
-{
-}
 
 /* ---------------------------------------------------------------------- */
 
@@ -361,7 +355,7 @@ void PairLJSFDipoleSF::settings(int narg, char **arg)
 void PairLJSFDipoleSF::coeff(int narg, char **arg)
 {
   if (narg < 4 || narg > 8)
-    error->all(FLERR,"Incorrect args for pair coefficients");
+    error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -388,10 +382,10 @@ void PairLJSFDipoleSF::coeff(int narg, char **arg)
     if (strcmp(arg[iarg],"scale") == 0) {
       scale_one = utils::numeric(FLERR,arg[iarg+1],false,lmp);
       iarg += 2;
-    } else error->all(FLERR,"Incorrect args for pair coefficients");
+    } else error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   }
   if (iarg != narg)
-    error->all(FLERR,"Incorrect args for pair coefficients");
+    error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 
   int count = 0;
   for (int i = ilo; i <= ihi; i++) {
@@ -406,7 +400,7 @@ void PairLJSFDipoleSF::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -418,7 +412,7 @@ void PairLJSFDipoleSF::init_style()
   if (!atom->q_flag || !atom->mu_flag || !atom->torque_flag)
     error->all(FLERR,"Pair dipole/sf requires atom attributes q, mu, torque");
 
-  neighbor->request(this,instance_me);
+  neighbor->add_request(this);
 }
 
 /* ----------------------------------------------------------------------

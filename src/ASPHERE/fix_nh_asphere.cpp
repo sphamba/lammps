@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -27,19 +27,14 @@ using namespace FixConst;
 
 /* ---------------------------------------------------------------------- */
 
-FixNHAsphere::FixNHAsphere(LAMMPS *lmp, int narg, char **arg) :
-  FixNH(lmp, narg, arg)
-{
-}
+FixNHAsphere::FixNHAsphere(LAMMPS *lmp, int narg, char **arg) : FixNH(lmp, narg, arg) {}
 
 /* ---------------------------------------------------------------------- */
 
 void FixNHAsphere::init()
 {
-  avec = (AtomVecEllipsoid *) atom->style_match("ellipsoid");
-  if (!avec)
-    error->all(FLERR,
-               "Compute nvt/nph/npt asphere requires atom style ellipsoid");
+  avec = dynamic_cast<AtomVecEllipsoid *>(atom->style_match("ellipsoid"));
+  if (!avec) error->all(FLERR, "Fix {} requires atom style ellipsoid", style);
 
   // check that all particles are finite-size
   // no point particles allowed, spherical is OK
@@ -51,7 +46,7 @@ void FixNHAsphere::init()
   for (int i = 0; i < nlocal; i++)
     if (mask[i] & groupbit)
       if (ellipsoid[i] < 0)
-        error->one(FLERR,"Fix nvt/nph/npt asphere requires extended particles");
+        error->one(FLERR,"Fix {} requires all extended particles", style);
 
   FixNH::init();
 }

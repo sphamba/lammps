@@ -80,7 +80,7 @@ The two Hookean styles use this formula:
 
    F_{hk} = (k_n \delta \mathbf{n}_{ij} -
    m_{eff} \gamma_n\mathbf{ v}_n) -
-   (k_t \mathbf{ \Delta s}_t +
+   (k_t \boldsymbol{\Delta} \mathbf{s}_t +
    m_{eff} \gamma_t \mathbf{v}_t)
 
 The Hertzian style uses this formula:
@@ -91,7 +91,7 @@ The Hertzian style uses this formula:
      \sqrt{\delta} \sqrt{\frac{R_i R_j}{R_i + R_j}}
      \Big[ (k_n \delta \mathbf{n}_{ij} -
        m_{eff} \: \gamma_n \mathbf{ v}_n) -
-       (k_t \mathbf{ \Delta s}_t +
+       (k_t \boldsymbol{\Delta} \mathbf{s}_t +
        m_{eff} \: \gamma_t \mathbf{v}_t) \Big]
 
 In both equations the first parenthesized term is the normal force
@@ -114,7 +114,7 @@ The other quantities in the equations are as follows:
 * :math:`\gamma_n` = viscoelastic damping constant for normal contact
 * :math:`\gamma_t` = viscoelastic damping constant for tangential contact
 * :math:`m_{eff} = M_i M_j / (M_i + M_j) =` effective mass of 2 particles of mass M_i and M_j
-* :math:`\mathbf{\Delta s}_t =` tangential displacement vector between 2 particles       which is truncated to satisfy a frictional yield criterion
+* :math:`\boldsymbol{\Delta} \mathbf{s}_t =` tangential displacement vector between 2 particles which is truncated to satisfy a frictional yield criterion
 * :math:`n_{ij} =` unit vector along the line connecting the centers of the 2 particles
 * :math:`V_n =` normal component of the relative velocity of the 2 particles
 * :math:`V_t =` tangential component of the relative velocity of the 2 particles
@@ -144,7 +144,7 @@ two particles, and is thus a non-linear function of overlap distance.
 Thus Kn has units of force per area and is thus specified in units of
 (pressure).  The effects of absolute particle size (monodispersity)
 and relative size (polydispersity) are captured in the radii-dependent
-pre-factors.  When these pre-factors are carried through to the other
+prefactors.  When these prefactors are carried through to the other
 terms in the force equation it means that the specified :math:`\gamma_n` is in
 units of (1/(time\*distance)), :math:`K_t` is in units of (pressure), and
 :math:`\gamma_t` is in units of (1/(time\*distance)).
@@ -278,6 +278,11 @@ These pair styles will not restart exactly when using the
 statistically similar results.  This is because the forces they
 compute depend on atom velocities.  See the
 :doc:`read_restart <read_restart>` command for more details.
+
+Accumulated values for individual contacts are saved to to restart
+files but are not saved to data files. Therefore, forces may
+differ significantly when a system is reloaded using A
+:doc:`read_data <read_data>` command.
 
 Related commands
 """"""""""""""""

@@ -42,6 +42,9 @@ Platform information functions
 .. doxygenfunction:: mpi_info
    :project: progguide
 
+.. doxygenfunction:: compress_info
+   :project: progguide
+
 
 File and path functions and global constants
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -65,6 +68,9 @@ File and path functions and global constants
    :project: progguide
 
 .. doxygenfunction:: is_console
+   :project: progguide
+
+.. doxygenfunction:: disk_free
    :project: progguide
 
 .. doxygenfunction:: path_is_directory
@@ -113,6 +119,9 @@ Environment variable functions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. doxygenfunction:: putenv
+   :project: progguide
+
+.. doxygenfunction:: unsetenv
    :project: progguide
 
 .. doxygenfunction:: list_pathenv

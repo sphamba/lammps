@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -21,7 +21,7 @@
 
 using namespace LAMMPS_NS;
 
-#define MAXLINE 256
+static constexpr int MAXLINE = 256;
 
 /* ----------------------------------------------------------------------
    create & initialize the universe of processors in communicator
@@ -69,7 +69,7 @@ Universe::~Universe()
 
 void Universe::reorder(char *style, char *arg)
 {
-  char line[MAXLINE];
+  char line[MAXLINE] = {'\0'};
 
   if (uworld != uorig) MPI_Comm_free(&uworld);
 
@@ -98,7 +98,7 @@ void Universe::reorder(char *style, char *arg)
       char *ptr;
       if (!fgets(line,MAXLINE,fp))
         error->one(FLERR,"Unexpected end of -reorder file");
-      while (1) {
+      while (true) {
         if ((ptr = strchr(line,'#'))) *ptr = '\0';
         if (strspn(line," \t\n\r") != strlen(line)) break;
         if (!fgets(line,MAXLINE,fp))
@@ -181,10 +181,10 @@ void Universe::add_world(char *str)
       if ((found == 0) || (found == (part.size() - 1))) {
         valid = false;
       } else if (found == std::string::npos) {
-        nper = atoi(part.c_str());
+        nper = std::stoi(part);
       } else {
-        n = atoi(part.substr(0,found).c_str());
-        nper = atoi(part.substr(found+1).c_str());
+        n = std::stoi(part.substr(0,found));
+        nper = std::stoi(part.substr(found+1));
       }
     }
 
@@ -193,8 +193,7 @@ void Universe::add_world(char *str)
     if (n < 1 || nper < 1) valid = false;
 
     if (!valid)
-      error->universe_all(FLERR,fmt::format("Invalid partition string '{}'",
-                                            str));
+      error->universe_all(FLERR, fmt::format("Invalid partition string '{}'", str));
   } else nper = nprocs;
 
   memory->grow(procs_per_world,nworlds+n,"universe:procs_per_world");

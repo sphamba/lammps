@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS Development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -33,7 +33,7 @@ public:
 
 TEST_F(DumpAtomCompressTest, compressed_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
     auto text_file       = text_dump_filename("run0.melt");
     auto compressed_file = compressed_dump_filename("run0.melt");
@@ -62,7 +62,7 @@ TEST_F(DumpAtomCompressTest, compressed_run0)
 
 TEST_F(DumpAtomCompressTest, compressed_no_buffer_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
     auto text_file       = text_dump_filename("no_buffer_run0.melt");
     auto compressed_file = compressed_dump_filename("no_buffer_run0.melt");
@@ -91,17 +91,17 @@ TEST_F(DumpAtomCompressTest, compressed_no_buffer_run0)
 
 TEST_F(DumpAtomCompressTest, compressed_multi_file_run1)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name         = "multi_file_run1_*.melt";
-    auto base_name_0       = "multi_file_run1_0.melt";
-    auto base_name_1       = "multi_file_run1_1.melt";
-    auto text_file         = text_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto text_file_1       = text_dump_filename(base_name_1);
-    auto compressed_file   = compressed_dump_filename(base_name);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto compressed_file_1 = compressed_dump_filename(base_name_1);
+    const auto *base_name   = "multi_file_run1_*.melt";
+    const auto *base_name_0 = "multi_file_run1_0.melt";
+    const auto *base_name_1 = "multi_file_run1_1.melt";
+    auto text_file          = text_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto text_file_1        = text_dump_filename(base_name_1);
+    auto compressed_file    = compressed_dump_filename(base_name);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    auto compressed_file_1  = compressed_dump_filename(base_name_1);
 
     if (compression_style == "atom/zstd") {
         generate_text_and_compressed_dump(text_file, compressed_file, "", "", "", "checksum no", 1);
@@ -131,17 +131,17 @@ TEST_F(DumpAtomCompressTest, compressed_multi_file_run1)
 
 TEST_F(DumpAtomCompressTest, compressed_multi_file_with_pad_run1)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name         = "multi_file_pad_run1_*.melt";
-    auto base_name_0       = "multi_file_pad_run1_000.melt";
-    auto base_name_1       = "multi_file_pad_run1_001.melt";
-    auto text_file         = text_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto text_file_1       = text_dump_filename(base_name_1);
-    auto compressed_file   = compressed_dump_filename(base_name);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto compressed_file_1 = compressed_dump_filename(base_name_1);
+    const auto *base_name   = "multi_file_pad_run1_*.melt";
+    const auto *base_name_0 = "multi_file_pad_run1_000.melt";
+    const auto *base_name_1 = "multi_file_pad_run1_001.melt";
+    auto text_file          = text_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto text_file_1        = text_dump_filename(base_name_1);
+    auto compressed_file    = compressed_dump_filename(base_name);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    auto compressed_file_1  = compressed_dump_filename(base_name_1);
 
     generate_text_and_compressed_dump(text_file, compressed_file, "", "pad 3", 1);
 
@@ -172,20 +172,20 @@ TEST_F(DumpAtomCompressTest, compressed_multi_file_with_pad_run1)
 
 TEST_F(DumpAtomCompressTest, compressed_multi_file_with_maxfiles_run1)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name         = "multi_file_maxfiles_run1_*.melt";
-    auto base_name_0       = "multi_file_maxfiles_run1_0.melt";
-    auto base_name_1       = "multi_file_maxfiles_run1_1.melt";
-    auto base_name_2       = "multi_file_maxfiles_run1_2.melt";
-    auto text_file         = text_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto text_file_1       = text_dump_filename(base_name_1);
-    auto text_file_2       = text_dump_filename(base_name_2);
-    auto compressed_file   = compressed_dump_filename(base_name);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto compressed_file_1 = compressed_dump_filename(base_name_1);
-    auto compressed_file_2 = compressed_dump_filename(base_name_2);
+    const auto *base_name   = "multi_file_maxfiles_run1_*.melt";
+    const auto *base_name_0 = "multi_file_maxfiles_run1_0.melt";
+    const auto *base_name_1 = "multi_file_maxfiles_run1_1.melt";
+    const auto *base_name_2 = "multi_file_maxfiles_run1_2.melt";
+    auto text_file          = text_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto text_file_1        = text_dump_filename(base_name_1);
+    auto text_file_2        = text_dump_filename(base_name_2);
+    auto compressed_file    = compressed_dump_filename(base_name);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    auto compressed_file_1  = compressed_dump_filename(base_name_1);
+    auto compressed_file_2  = compressed_dump_filename(base_name_2);
 
     generate_text_and_compressed_dump(text_file, compressed_file, "", "maxfiles 2", 2);
 
@@ -218,11 +218,11 @@ TEST_F(DumpAtomCompressTest, compressed_multi_file_with_maxfiles_run1)
 
 TEST_F(DumpAtomCompressTest, compressed_with_units_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name       = "with_units_run0.melt";
-    auto text_file       = text_dump_filename(base_name);
-    auto compressed_file = compressed_dump_filename(base_name);
+    const auto *base_name = "with_units_run0.melt";
+    auto text_file        = text_dump_filename(base_name);
+    auto compressed_file  = compressed_dump_filename(base_name);
 
     generate_text_and_compressed_dump(text_file, compressed_file, "", "scale no units yes", 0);
 
@@ -242,11 +242,11 @@ TEST_F(DumpAtomCompressTest, compressed_with_units_run0)
 
 TEST_F(DumpAtomCompressTest, compressed_with_time_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name       = "with_time_run0.melt";
-    auto text_file       = text_dump_filename(base_name);
-    auto compressed_file = compressed_dump_filename(base_name);
+    const auto *base_name = "with_time_run0.melt";
+    auto text_file        = text_dump_filename(base_name);
+    auto compressed_file  = compressed_dump_filename(base_name);
 
     generate_text_and_compressed_dump(text_file, compressed_file, "", "scale no time yes", 0);
 
@@ -266,11 +266,11 @@ TEST_F(DumpAtomCompressTest, compressed_with_time_run0)
 
 TEST_F(DumpAtomCompressTest, compressed_triclinic_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name       = "tri_run0.melt";
-    auto text_file       = text_dump_filename(base_name);
-    auto compressed_file = compressed_dump_filename(base_name);
+    const auto *base_name = "tri_run0.melt";
+    auto text_file        = text_dump_filename(base_name);
+    auto compressed_file  = compressed_dump_filename(base_name);
 
     enable_triclinic();
     generate_text_and_compressed_dump(text_file, compressed_file, "", "", 0);
@@ -291,11 +291,11 @@ TEST_F(DumpAtomCompressTest, compressed_triclinic_run0)
 
 TEST_F(DumpAtomCompressTest, compressed_triclinic_with_units_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name       = "tri_with_units_run0.melt";
-    auto text_file       = text_dump_filename(base_name);
-    auto compressed_file = compressed_dump_filename(base_name);
+    const auto *base_name = "tri_with_units_run0.melt";
+    auto text_file        = text_dump_filename(base_name);
+    auto compressed_file  = compressed_dump_filename(base_name);
 
     enable_triclinic();
     generate_text_and_compressed_dump(text_file, compressed_file, "", "scale no units yes", 0);
@@ -316,11 +316,11 @@ TEST_F(DumpAtomCompressTest, compressed_triclinic_with_units_run0)
 
 TEST_F(DumpAtomCompressTest, compressed_triclinic_with_time_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name       = "tri_with_time_run0.melt";
-    auto text_file       = text_dump_filename(base_name);
-    auto compressed_file = compressed_dump_filename(base_name);
+    const auto *base_name = "tri_with_time_run0.melt";
+    auto text_file        = text_dump_filename(base_name);
+    auto compressed_file  = compressed_dump_filename(base_name);
 
     enable_triclinic();
     generate_text_and_compressed_dump(text_file, compressed_file, "", "scale no time yes", 0);
@@ -341,11 +341,11 @@ TEST_F(DumpAtomCompressTest, compressed_triclinic_with_time_run0)
 
 TEST_F(DumpAtomCompressTest, compressed_triclinic_with_image_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name       = "tri_with_image_run0.melt";
-    auto text_file       = text_dump_filename(base_name);
-    auto compressed_file = compressed_dump_filename(base_name);
+    const auto *base_name = "tri_with_image_run0.melt";
+    auto text_file        = text_dump_filename(base_name);
+    auto compressed_file  = compressed_dump_filename(base_name);
 
     enable_triclinic();
     generate_text_and_compressed_dump(text_file, compressed_file, "", "image yes", 0);
@@ -394,11 +394,11 @@ TEST_F(DumpAtomCompressTest, compressed_modify_multi_bad_param)
 
 TEST_F(DumpAtomCompressTest, compressed_modify_clevel_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name       = "modify_clevel_run0.melt";
-    auto text_file       = text_dump_filename(base_name);
-    auto compressed_file = compressed_dump_filename(base_name);
+    const auto *base_name = "modify_clevel_run0.melt";
+    auto text_file        = text_dump_filename(base_name);
+    auto compressed_file  = compressed_dump_filename(base_name);
 
     generate_text_and_compressed_dump(text_file, compressed_file, "", "", "", "compression_level 3",
                                       0);

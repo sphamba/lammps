@@ -1,5 +1,5 @@
 # 20 styrene molecules
-# three reactions defined  
+# three reactions defined
 
 units real
 
@@ -11,13 +11,16 @@ kspace_style pppm 1.0e-4
 
 pair_style lj/class2/coul/long 8.5
 
-angle_style class2 
+angle_style class2
 
-bond_style class2 
+bond_style class2
 
 dihedral_style class2
 
 improper_style class2
+
+special_bonds lj/coul 0 0 1
+pair_modify tail yes mix sixthpower
 
 variable T equal 530
 
@@ -28,16 +31,17 @@ read_data tiny_polystyrene.data  &
   extra/improper/per/atom 25 &
   extra/special/per/atom 25
 
-molecule mol1 2styrene_unreacted.data_template
-molecule mol2 2styrene_reacted.data_template
-molecule mol3 chain_plus_styrene_unreacted.data_template
-molecule mol4 chain_plus_styrene_reacted.data_template
-molecule mol5 chain_chain_unreacted.data_template
-molecule mol6 chain_chain_reacted.data_template
+molecule mol1 2styrene_unreacted.molecule_template
+molecule mol2 2styrene_reacted.molecule_template
+molecule mol3 chain_plus_styrene_unreacted.molecule_template
+molecule mol4 chain_plus_styrene_reacted.molecule_template
+molecule mol5 chain_chain_unreacted.molecule_template
+molecule mol6 chain_chain_reacted.molecule_template
 
 thermo 100
 
 # dump 1 all xyz 5 test_vis.xyz
+# dump_modify 1 types labels
 
 fix rxn1 all bond/react stabilization yes statted_grp .03 &
  react rxn1 all 1 0 3.0 mol1 mol2 2styrene_map stabilize_steps 100 &
@@ -48,9 +52,9 @@ fix 1 statted_grp_REACT nvt temp $T $T 100
 
 fix 4 bond_react_MASTER_group temp/rescale 1 $T $T 1 1
 
-thermo_style custom step temp press density f_rxn1[1] f_rxn1[2] f_rxn1[3]
+thermo_style custom step temp press density f_rxn1[*]
 
 run 10000
 
-# write_restart restart_longrun nofix
-# write_data restart_longrun.data 
+# write_restart restart_longrun
+# write_data restart_longrun.data nofix

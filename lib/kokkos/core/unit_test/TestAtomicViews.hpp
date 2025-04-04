@@ -1,50 +1,22 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 3.0
-//       Copyright (2020) National Technology & Engineering
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
 //               Solutions of Sandia, LLC (NTESS).
 //
 // Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NTESS OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
 
 #include <Kokkos_Core.hpp>
 
-namespace TestAtomicViews {
+namespace {
 
 //-------------------------------------------------
 //-----------atomic view api tests-----------------
@@ -73,8 +45,7 @@ struct TestViewOperator_LeftAndRight<DataType, DeviceType, 1> {
   using value_type = int;
 
   KOKKOS_INLINE_FUNCTION
-  static void join(volatile value_type& update,
-                   const volatile value_type& input) {
+  static void join(value_type& update, const value_type& input) {
     update |= input;
   }
 
@@ -153,10 +124,10 @@ class TestAtomicViewAPI {
 
   using dView0           = Kokkos::View<T, device>;
   using dView1           = Kokkos::View<T*, device>;
-  using dView2           = Kokkos::View<T * [N1], device>;
-  using dView3           = Kokkos::View<T * [N1][N2], device>;
-  using dView4           = Kokkos::View<T * [N1][N2][N3], device>;
-  using const_dView4     = Kokkos::View<const T * [N1][N2][N3], device>;
+  using dView2           = Kokkos::View<T* [N1], device>;
+  using dView3           = Kokkos::View<T* [N1][N2], device>;
+  using dView4           = Kokkos::View<T* [N1][N2][N3], device>;
+  using const_dView4     = Kokkos::View<const T* [N1][N2][N3], device>;
   using dView4_unmanaged = Kokkos::View<T****, device, Kokkos::MemoryUnmanaged>;
   using host             = typename dView0::host_mirror_space;
 
@@ -164,12 +135,12 @@ class TestAtomicViewAPI {
   using aView1 =
       Kokkos::View<T*, device, Kokkos::MemoryTraits<Kokkos::Atomic> >;
   using aView2 =
-      Kokkos::View<T * [N1], device, Kokkos::MemoryTraits<Kokkos::Atomic> >;
+      Kokkos::View<T* [N1], device, Kokkos::MemoryTraits<Kokkos::Atomic> >;
   using aView3 =
-      Kokkos::View<T * [N1][N2], device, Kokkos::MemoryTraits<Kokkos::Atomic> >;
-  using aView4       = Kokkos::View<T * [N1][N2][N3], device,
+      Kokkos::View<T* [N1][N2], device, Kokkos::MemoryTraits<Kokkos::Atomic> >;
+  using aView4       = Kokkos::View<T* [N1][N2][N3], device,
                               Kokkos::MemoryTraits<Kokkos::Atomic> >;
-  using const_aView4 = Kokkos::View<const T * [N1][N2][N3], device,
+  using const_aView4 = Kokkos::View<const T* [N1][N2][N3], device,
                                     Kokkos::MemoryTraits<Kokkos::Atomic> >;
 
   using aView4_unmanaged =
@@ -194,19 +165,19 @@ class TestAtomicViewAPI {
 
     dx = dView0("dx");
     dy = dView0("dy");
-    ASSERT_EQ(dx.use_count(), size_t(1));
-    ASSERT_EQ(dy.use_count(), size_t(1));
+    ASSERT_EQ(dx.use_count(), 1);
+    ASSERT_EQ(dy.use_count(), 1);
 
     ax = dx;
     ay = dy;
-    ASSERT_EQ(dx.use_count(), size_t(2));
-    ASSERT_EQ(dy.use_count(), size_t(2));
+    ASSERT_EQ(dx.use_count(), 2);
+    ASSERT_EQ(dy.use_count(), 2);
     ASSERT_EQ(dx.use_count(), ax.use_count());
 
     az = ax;
-    ASSERT_EQ(dx.use_count(), size_t(3));
-    ASSERT_EQ(ax.use_count(), size_t(3));
-    ASSERT_EQ(az.use_count(), size_t(3));
+    ASSERT_EQ(dx.use_count(), 3);
+    ASSERT_EQ(ax.use_count(), 3);
+    ASSERT_EQ(az.use_count(), 3);
     ASSERT_EQ(az.use_count(), ax.use_count());
   }
 
@@ -216,40 +187,40 @@ class TestAtomicViewAPI {
 
     dx = dView4("dx", N0);
     dy = dView4("dy", N0);
-    ASSERT_EQ(dx.use_count(), size_t(1));
-    ASSERT_EQ(dy.use_count(), size_t(1));
+    ASSERT_EQ(dx.use_count(), 1);
+    ASSERT_EQ(dy.use_count(), 1);
 
     ax = dx;
     ay = dy;
-    ASSERT_EQ(dx.use_count(), size_t(2));
-    ASSERT_EQ(dy.use_count(), size_t(2));
+    ASSERT_EQ(dx.use_count(), 2);
+    ASSERT_EQ(dy.use_count(), 2);
     ASSERT_EQ(dx.use_count(), ax.use_count());
 
     dView4_unmanaged unmanaged_dx = dx;
-    ASSERT_EQ(dx.use_count(), size_t(2));
+    ASSERT_EQ(dx.use_count(), 2);
 
     az = ax;
-    ASSERT_EQ(dx.use_count(), size_t(3));
-    ASSERT_EQ(ax.use_count(), size_t(3));
-    ASSERT_EQ(az.use_count(), size_t(3));
+    ASSERT_EQ(dx.use_count(), 3);
+    ASSERT_EQ(ax.use_count(), 3);
+    ASSERT_EQ(az.use_count(), 3);
     ASSERT_EQ(az.use_count(), ax.use_count());
 
     aView4_unmanaged unmanaged_ax = ax;
-    ASSERT_EQ(ax.use_count(), size_t(3));
+    ASSERT_EQ(ax.use_count(), 3);
 
     aView4_unmanaged unmanaged_ax_from_ptr_dx = aView4_unmanaged(
         dx.data(), dx.extent(0), dx.extent(1), dx.extent(2), dx.extent(3));
-    ASSERT_EQ(ax.use_count(), size_t(3));
+    ASSERT_EQ(ax.use_count(), 3);
 
     const_aView4 const_ax = ax;
-    ASSERT_EQ(ax.use_count(), size_t(4));
+    ASSERT_EQ(ax.use_count(), 4);
     ASSERT_EQ(const_ax.use_count(), ax.use_count());
 
-    ASSERT_FALSE(ax.data() == nullptr);
-    ASSERT_FALSE(const_ax.data() == nullptr);  // referenceable ptr
-    ASSERT_FALSE(unmanaged_ax.data() == nullptr);
-    ASSERT_FALSE(unmanaged_ax_from_ptr_dx.data() == nullptr);
-    ASSERT_FALSE(ay.data() == nullptr);
+    ASSERT_NE(ax.data(), nullptr);
+    ASSERT_NE(const_ax.data(), nullptr);  // referenceable ptr
+    ASSERT_NE(unmanaged_ax.data(), nullptr);
+    ASSERT_NE(unmanaged_ax_from_ptr_dx.data(), nullptr);
+    ASSERT_NE(ay.data(), nullptr);
     //    ASSERT_NE( ax, ay );
     //    Above test results in following runtime error from gtest:
     //    Expected: (ax) != (ay), actual: 32-byte object <30-01 D0-A0 D8-7F
@@ -278,7 +249,7 @@ class TestAtomicViewAPI {
                          Kokkos::MemoryTraits<Kokkos::Atomic> >& arg_const,
       const Kokkos::View<const DataType, device,
                          Kokkos::MemoryTraits<Kokkos::Atomic> >& arg) {
-    ASSERT_TRUE(arg_const == arg);
+    ASSERT_EQ(arg_const, arg);
   }
 
   static void run_test_const() {
@@ -290,8 +261,8 @@ class TestAtomicViewAPI {
     typeX x("X");
     const_typeX xc = x;
 
-    // ASSERT_TRUE( xc == x ); // const xc is referenceable, non-const x is not
-    // ASSERT_TRUE( x == xc );
+    // ASSERT_EQ( xc ,  x ); // const xc is referenceable, non-const x is not
+    // ASSERT_EQ( x ,  xc );
 
     check_auto_conversion_to_const(x, xc);
   }
@@ -444,21 +415,13 @@ T PlusEqualAtomicViewCheck(const int64_t input_length) {
 }
 
 template <class T, class DeviceType>
-bool PlusEqualAtomicViewTest(int64_t input_length) {
+void PlusEqualAtomicViewTest(int64_t input_length) {
   T res       = PlusEqualAtomicView<T, DeviceType>(input_length);
   T resSerial = PlusEqualAtomicViewCheck<T>(input_length);
 
-  bool passed = true;
-
-  if (resSerial != res) {
-    passed = false;
-
-    std::cout << "Loop<" << typeid(T).name()
-              << ">( test = PlusEqualAtomicViewTest"
-              << " FAILED : " << resSerial << " != " << res << std::endl;
-  }
-
-  return passed;
+  ASSERT_EQ(res, resSerial)
+      << "PlusEqualAtomicViewTest<" << Kokkos::Impl::TypeInfo<T>::name()
+      << ">(length=" << input_length << ")";
 }
 
 //---------------------------------------------------
@@ -541,21 +504,13 @@ T MinusEqualAtomicViewCheck(const int64_t input_length) {
 }
 
 template <class T, class DeviceType>
-bool MinusEqualAtomicViewTest(int64_t input_length) {
+void MinusEqualAtomicViewTest(int64_t input_length) {
   T res       = MinusEqualAtomicView<T, DeviceType>(input_length);
   T resSerial = MinusEqualAtomicViewCheck<T>(input_length);
 
-  bool passed = true;
-
-  if (resSerial != res) {
-    passed = false;
-
-    std::cout << "Loop<" << typeid(T).name()
-              << ">( test = MinusEqualAtomicViewTest"
-              << " FAILED : " << resSerial << " != " << res << std::endl;
-  }
-
-  return passed;
+  ASSERT_EQ(res, resSerial)
+      << "MinusEqualAtomicViewTest<" << Kokkos::Impl::TypeInfo<T>::name()
+      << ">(length=" << input_length << ")";
 }
 
 //---------------------------------------------------
@@ -630,22 +585,14 @@ T TimesEqualAtomicViewCheck(const int64_t input_length,
 }
 
 template <class T, class DeviceType>
-bool TimesEqualAtomicViewTest(const int64_t input_length) {
+void TimesEqualAtomicViewTest(const int64_t input_length) {
   const int64_t remainder = 23;
   T res       = TimesEqualAtomicView<T, DeviceType>(input_length, remainder);
   T resSerial = TimesEqualAtomicViewCheck<T>(input_length, remainder);
 
-  bool passed = true;
-
-  if (resSerial != res) {
-    passed = false;
-
-    std::cout << "Loop<" << typeid(T).name()
-              << ">( test = TimesEqualAtomicViewTest"
-              << " FAILED : " << resSerial << " != " << res << std::endl;
-  }
-
-  return passed;
+  ASSERT_EQ(res, resSerial)
+      << "TimesEqualAtomicViewTest<" << Kokkos::Impl::TypeInfo<T>::name()
+      << ">(length=" << input_length << ")";
 }
 
 //---------------------------------------------------
@@ -719,23 +666,15 @@ T DivEqualAtomicViewCheck(const int64_t input_length, const int64_t remainder) {
 }
 
 template <class T, class DeviceType>
-bool DivEqualAtomicViewTest(const int64_t input_length) {
+void DivEqualAtomicViewTest(const int64_t input_length) {
   const int64_t remainder = 23;
 
   T res       = DivEqualAtomicView<T, DeviceType>(input_length, remainder);
   T resSerial = DivEqualAtomicViewCheck<T>(input_length, remainder);
 
-  bool passed = true;
-
-  if (resSerial != res) {
-    passed = false;
-
-    std::cout << "Loop<" << typeid(T).name()
-              << ">( test = DivEqualAtomicViewTest"
-              << " FAILED : " << resSerial << " != " << res << std::endl;
-  }
-
-  return passed;
+  ASSERT_EQ(res, resSerial)
+      << "DivEqualAtomicViewTest<" << Kokkos::Impl::TypeInfo<T>::name()
+      << ">(length=" << input_length << ",remainder=" << remainder << ")";
 }
 
 //---------------------------------------------------
@@ -809,8 +748,8 @@ T ModEqualAtomicViewCheck(const int64_t input_length, const int64_t remainder) {
 }
 
 template <class T, class DeviceType>
-bool ModEqualAtomicViewTest(const int64_t input_length) {
-  static_assert(std::is_integral<T>::value,
+void ModEqualAtomicViewTest(const int64_t input_length) {
+  static_assert(std::is_integral_v<T>,
                 "ModEqualAtomicView Error: Type must be integral type for this "
                 "unit test");
 
@@ -819,17 +758,9 @@ bool ModEqualAtomicViewTest(const int64_t input_length) {
   T res       = ModEqualAtomicView<T, DeviceType>(input_length, remainder);
   T resSerial = ModEqualAtomicViewCheck<T>(input_length, remainder);
 
-  bool passed = true;
-
-  if (resSerial != res) {
-    passed = false;
-
-    std::cout << "Loop<" << typeid(T).name()
-              << ">( test = ModEqualAtomicViewTest"
-              << " FAILED : " << resSerial << " != " << res << std::endl;
-  }
-
-  return passed;
+  ASSERT_EQ(res, resSerial)
+      << "ModEqualAtomicViewTest<" << Kokkos::Impl::TypeInfo<T>::name()
+      << ">(length=" << input_length << ",remainder=" << remainder << ")";
 }
 
 //---------------------------------------------------
@@ -937,8 +868,8 @@ T RSEqualAtomicViewCheck(const int64_t input_length, const int64_t value,
 }
 
 template <class T, class DeviceType>
-bool RSEqualAtomicViewTest(const int64_t input_length) {
-  static_assert(std::is_integral<T>::value,
+void RSEqualAtomicViewTest(const int64_t input_length) {
+  static_assert(std::is_integral_v<T>,
                 "RSEqualAtomicViewTest: Must be integral type for test");
 
   const int64_t remainder = 61042;       // prime - 1
@@ -946,17 +877,10 @@ bool RSEqualAtomicViewTest(const int64_t input_length) {
   T res = RSEqualAtomicView<T, DeviceType>(input_length, value, remainder);
   T resSerial = RSEqualAtomicViewCheck<T>(input_length, value, remainder);
 
-  bool passed = true;
-
-  if (resSerial != res) {
-    passed = false;
-
-    std::cout << "Loop<" << typeid(T).name()
-              << ">( test = RSEqualAtomicViewTest"
-              << " FAILED : " << resSerial << " != " << res << std::endl;
-  }
-
-  return passed;
+  ASSERT_EQ(res, resSerial)
+      << "RSEqualAtomicViewTest<" << Kokkos::Impl::TypeInfo<T>::name()
+      << ">(length=" << input_length << ",value=" << value
+      << ",remainder=" << remainder << ")";
 }
 
 //---------------------------------------------------
@@ -1064,8 +988,8 @@ T LSEqualAtomicViewCheck(const int64_t input_length, const int64_t value,
 }
 
 template <class T, class DeviceType>
-bool LSEqualAtomicViewTest(const int64_t input_length) {
-  static_assert(std::is_integral<T>::value,
+void LSEqualAtomicViewTest(const int64_t input_length) {
+  static_assert(std::is_integral_v<T>,
                 "LSEqualAtomicViewTest: Must be integral type for test");
 
   const int64_t remainder = 61042;  // prime - 1
@@ -1073,17 +997,10 @@ bool LSEqualAtomicViewTest(const int64_t input_length) {
   T res = LSEqualAtomicView<T, DeviceType>(input_length, value, remainder);
   T resSerial = LSEqualAtomicViewCheck<T>(input_length, value, remainder);
 
-  bool passed = true;
-
-  if (resSerial != res) {
-    passed = false;
-
-    std::cout << "Loop<" << typeid(T).name()
-              << ">( test = RSEqualAtomicViewTest"
-              << " FAILED : " << resSerial << " != " << res << std::endl;
-  }
-
-  return passed;
+  ASSERT_EQ(res, resSerial)
+      << "LSEqualAtomicViewTest<" << Kokkos::Impl::TypeInfo<T>::name()
+      << ">(length=" << input_length << ",value=" << value
+      << ",remainder=" << remainder << ")";
 }
 
 //---------------------------------------------------
@@ -1148,35 +1065,23 @@ T AndEqualAtomicViewCheck(const int64_t input_length) {
   const int64_t N = input_length;
   T result[2]     = {1};
   for (int64_t i = 0; i < N; ++i) {
-    if (N % 2 == 0) {
-      result[0] &= (T)i;
-    } else {
-      result[1] &= (T)i;
-    }
+    int64_t idx = N % 2;
+    result[idx] &= (T)i;
   }
-
   return (result[0]);
 }
 
 template <class T, class DeviceType>
-bool AndEqualAtomicViewTest(int64_t input_length) {
-  static_assert(std::is_integral<T>::value,
+void AndEqualAtomicViewTest(int64_t input_length) {
+  static_assert(std::is_integral_v<T>,
                 "AndEqualAtomicViewTest: Must be integral type for test");
 
   T res       = AndEqualAtomicView<T, DeviceType>(input_length);
   T resSerial = AndEqualAtomicViewCheck<T>(input_length);
 
-  bool passed = true;
-
-  if (resSerial != res) {
-    passed = false;
-
-    std::cout << "Loop<" << typeid(T).name()
-              << ">( test = AndEqualAtomicViewTest"
-              << " FAILED : " << resSerial << " != " << res << std::endl;
-  }
-
-  return passed;
+  ASSERT_EQ(res, resSerial)
+      << "AndEqualAtomicViewTest<" << Kokkos::Impl::TypeInfo<T>::name()
+      << ">(length=" << input_length << ")";
 }
 
 //---------------------------------------------------
@@ -1251,24 +1156,16 @@ T OrEqualAtomicViewCheck(const int64_t input_length) {
 }
 
 template <class T, class DeviceType>
-bool OrEqualAtomicViewTest(int64_t input_length) {
-  static_assert(std::is_integral<T>::value,
+void OrEqualAtomicViewTest(int64_t input_length) {
+  static_assert(std::is_integral_v<T>,
                 "OrEqualAtomicViewTest: Must be integral type for test");
 
   T res       = OrEqualAtomicView<T, DeviceType>(input_length);
   T resSerial = OrEqualAtomicViewCheck<T>(input_length);
 
-  bool passed = true;
-
-  if (resSerial != res) {
-    passed = false;
-
-    std::cout << "Loop<" << typeid(T).name()
-              << ">( test = OrEqualAtomicViewTest"
-              << " FAILED : " << resSerial << " != " << res << std::endl;
-  }
-
-  return passed;
+  ASSERT_EQ(res, resSerial)
+      << "OrEqualAtomicViewTest<" << Kokkos::Impl::TypeInfo<T>::name()
+      << ">(length=" << input_length << ")";
 }
 
 //---------------------------------------------------
@@ -1343,119 +1240,42 @@ T XOrEqualAtomicViewCheck(const int64_t input_length) {
 }
 
 template <class T, class DeviceType>
-bool XOrEqualAtomicViewTest(int64_t input_length) {
-  static_assert(std::is_integral<T>::value,
+void XOrEqualAtomicViewTest(int64_t input_length) {
+  static_assert(std::is_integral_v<T>,
                 "XOrEqualAtomicViewTest: Must be integral type for test");
 
   T res       = XOrEqualAtomicView<T, DeviceType>(input_length);
   T resSerial = XOrEqualAtomicViewCheck<T>(input_length);
 
-  bool passed = true;
-
-  if (resSerial != res) {
-    passed = false;
-
-    std::cout << "Loop<" << typeid(T).name()
-              << ">( test = XOrEqualAtomicViewTest"
-              << " FAILED : " << resSerial << " != " << res << std::endl;
-  }
-
-  return passed;
+  ASSERT_EQ(res, resSerial)
+      << "XOrEqualAtomicViewTest<" << Kokkos::Impl::TypeInfo<T>::name()
+      << ">(length=" << input_length << ")";
 }
 
 // inc/dec?
 
-//---------------------------------------------------
-//--------------atomic_test_control------------------
-//---------------------------------------------------
-
-template <class T, class DeviceType>
-bool AtomicViewsTestIntegralType(const int length, int test) {
-  static_assert(std::is_integral<T>::value,
-                "TestAtomicViews Error: Non-integral type passed into "
-                "IntegralType tests");
-
-  switch (test) {
-    case 1: return PlusEqualAtomicViewTest<T, DeviceType>(length);
-    case 2: return MinusEqualAtomicViewTest<T, DeviceType>(length);
-    case 3: return RSEqualAtomicViewTest<T, DeviceType>(length);
-    case 4: return LSEqualAtomicViewTest<T, DeviceType>(length);
-    case 5: return ModEqualAtomicViewTest<T, DeviceType>(length);
-    case 6: return AndEqualAtomicViewTest<T, DeviceType>(length);
-    case 7: return OrEqualAtomicViewTest<T, DeviceType>(length);
-    case 8: return XOrEqualAtomicViewTest<T, DeviceType>(length);
-  }
-
-  return 0;
-}
-
-template <class T, class DeviceType>
-bool AtomicViewsTestNonIntegralType(const int length, int test) {
-  switch (test) {
-    case 1: return PlusEqualAtomicViewTest<T, DeviceType>(length);
-    case 2: return MinusEqualAtomicViewTest<T, DeviceType>(length);
-    case 3: return TimesEqualAtomicViewTest<T, DeviceType>(length);
-    case 4: return DivEqualAtomicViewTest<T, DeviceType>(length);
-  }
-
-  return 0;
-}
-
-}  // namespace TestAtomicViews
-
-namespace Test {
-
 TEST(TEST_CATEGORY, atomic_views_integral) {
   const int64_t length = 1000000;
-  {
-    // Integral Types.
-    ASSERT_TRUE(
-        (TestAtomicViews::AtomicViewsTestIntegralType<int64_t, TEST_EXECSPACE>(
-            length, 1)));
-    ASSERT_TRUE(
-        (TestAtomicViews::AtomicViewsTestIntegralType<int64_t, TEST_EXECSPACE>(
-            length, 2)));
-    ASSERT_TRUE(
-        (TestAtomicViews::AtomicViewsTestIntegralType<int64_t, TEST_EXECSPACE>(
-            length, 3)));
-    ASSERT_TRUE(
-        (TestAtomicViews::AtomicViewsTestIntegralType<int64_t, TEST_EXECSPACE>(
-            length, 4)));
-    ASSERT_TRUE(
-        (TestAtomicViews::AtomicViewsTestIntegralType<int64_t, TEST_EXECSPACE>(
-            length, 5)));
-    ASSERT_TRUE(
-        (TestAtomicViews::AtomicViewsTestIntegralType<int64_t, TEST_EXECSPACE>(
-            length, 6)));
-    ASSERT_TRUE(
-        (TestAtomicViews::AtomicViewsTestIntegralType<int64_t, TEST_EXECSPACE>(
-            length, 7)));
-    ASSERT_TRUE(
-        (TestAtomicViews::AtomicViewsTestIntegralType<int64_t, TEST_EXECSPACE>(
-            length, 8)));
-  }
+  PlusEqualAtomicViewTest<int64_t, TEST_EXECSPACE>(length);
+  MinusEqualAtomicViewTest<int64_t, TEST_EXECSPACE>(length);
+  RSEqualAtomicViewTest<int64_t, TEST_EXECSPACE>(length);
+  LSEqualAtomicViewTest<int64_t, TEST_EXECSPACE>(length);
+  ModEqualAtomicViewTest<int64_t, TEST_EXECSPACE>(length);
+  AndEqualAtomicViewTest<int64_t, TEST_EXECSPACE>(length);
+  OrEqualAtomicViewTest<int64_t, TEST_EXECSPACE>(length);
+  XOrEqualAtomicViewTest<int64_t, TEST_EXECSPACE>(length);
 }
 
 TEST(TEST_CATEGORY, atomic_views_nonintegral) {
   const int64_t length = 1000000;
-  {
-    // Non-Integral Types.
-    ASSERT_TRUE((
-        TestAtomicViews::AtomicViewsTestNonIntegralType<double, TEST_EXECSPACE>(
-            length, 1)));
-    ASSERT_TRUE((
-        TestAtomicViews::AtomicViewsTestNonIntegralType<double, TEST_EXECSPACE>(
-            length, 2)));
-    ASSERT_TRUE((
-        TestAtomicViews::AtomicViewsTestNonIntegralType<double, TEST_EXECSPACE>(
-            length, 3)));
-    ASSERT_TRUE((
-        TestAtomicViews::AtomicViewsTestNonIntegralType<double, TEST_EXECSPACE>(
-            length, 4)));
-  }
+  PlusEqualAtomicViewTest<double, TEST_EXECSPACE>(length);
+  MinusEqualAtomicViewTest<double, TEST_EXECSPACE>(length);
+  TimesEqualAtomicViewTest<double, TEST_EXECSPACE>(length);
+  DivEqualAtomicViewTest<double, TEST_EXECSPACE>(length);
 }
 
 TEST(TEST_CATEGORY, atomic_view_api) {
-  TestAtomicViews::TestAtomicViewAPI<int, TEST_EXECSPACE>();
+  TestAtomicViewAPI<int, TEST_EXECSPACE>();
 }
-}  // namespace Test
+
+}  // namespace

@@ -1,4 +1,3 @@
-// clang-format off
 /* ----------------------------------------------------------------------
  *
  *                    *** Smooth Mach Dynamics ***
@@ -13,7 +12,7 @@
 /* ----------------------------------------------------------------------
  LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
  https://www.lammps.org/, Sandia National Laboratories
- Steve Plimpton, sjplimp@sandia.gov
+ LAMMPS development team: developers@lammps.org
 
  Copyright (2003) Sandia Corporation.  Under the terms of Contract
  DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -26,13 +25,15 @@
 #include "atom_vec_smd.h"
 
 #include "atom.h"
+#include "domain.h"
+#include "memory.h"
 
 #include <cstring>
 
 using namespace LAMMPS_NS;
 
-#define NMAT_FULL 9
-#define NMAT_SYMM 6
+static constexpr int NMAT_FULL = 9;
+static constexpr int NMAT_SYMM = 6;
 
 /* ---------------------------------------------------------------------- */
 
@@ -58,47 +59,40 @@ AtomVecSMD::AtomVecSMD(LAMMPS *lmp) : AtomVec(lmp)
   atom->damage_flag = 1;
   atom->eff_plastic_strain_rate_flag = 1;
 
+  x0_hold = nullptr;
+
   // strings with peratom variables to include in each AtomVec method
   // strings cannot contain fields in corresponding AtomVec default strings
   // order of fields in a string does not matter
   // except: fields_data_atom & fields_data_vel must match data file
 
-  fields_grow = (char *)
-    "esph desph vfrac rmass x0 radius contact_radius molecule "
-    "smd_data_9 vest smd_stress "
-    "eff_plastic_strain eff_plastic_strain_rate damage";
-  fields_copy = (char *)
-    "esph vfrac rmass x0 radius contact_radius molecule "
-    "eff_plastic_strain eff_plastic_strain_rate vest "
-    "smd_data_9 smd_stress damage";
-  fields_comm = (char *) "radius vfrac vest esph";
-  fields_comm_vel = (char *) "radius vfrac vest esph";
-  fields_reverse = (char *) "desph";
-  fields_border = (char *)
-    "x0 molecule radius rmass vfrac contact_radius esph "
-    "eff_plastic_strain smd_data_9 smd_stress";
-  fields_border_vel = (char *)
-    "x0 molecule radius rmass vfrac contact_radius esph "
-    "eff_plastic_strain smd_data_9 smd_stress vest";
-  fields_exchange = (char *)
-    "x0 molecule radius rmass vfrac contact_radius esph "
-    "eff_plastic_strain eff_plastic_strain_rate smd_data_9 smd_stress "
-    "vest damage";
-  fields_restart = (char *)
-    "x0 molecule radius rmass vfrac contact_radius esph "
-    "eff_plastic_strain eff_plastic_strain_rate smd_data_9 smd_stress "
-    "vest damage";
-  fields_create = (char *)
-    "x0 vest vfrac rmass radius contact_radius molecule esph "
-    "eff_plastic_strain eff_plastic_strain_rate smd_data_9 smd_stress damage";
-  fields_data_atom = (char *)
-    "id type molecule vfrac rmass radius contact_radius x0 x";
-  fields_data_vel = (char *) "id v";
+  // clang-format off
+  fields_grow = {"esph", "desph", "vfrac", "rmass", "x0", "radius", "contact_radius", "molecule",
+    "smd_data_9", "vest", "smd_stress", "eff_plastic_strain", "eff_plastic_strain_rate", "damage"};
+  fields_copy = {"esph", "vfrac", "rmass", "x0", "radius", "contact_radius", "molecule",
+    "eff_plastic_strain", "eff_plastic_strain_rate", "vest", "smd_data_9", "smd_stress", "damage"};
+  fields_comm = {"radius", "vfrac", "vest", "esph"};
+  fields_comm_vel = {"radius", "vfrac", "vest", "esph"};
+  fields_reverse = {"desph"};
+  fields_border = {"x0", "molecule", "radius", "rmass", "vfrac", "contact_radius", "esph",
+    "eff_plastic_strain", "smd_data_9", "smd_stress"};
+  fields_border_vel = {"x0", "molecule", "radius", "rmass", "vfrac", "contact_radius", "esph",
+    "eff_plastic_strain", "smd_data_9", "smd_stress", "vest"};
+  fields_exchange = {"x0", "molecule", "radius", "rmass", "vfrac", "contact_radius", "esph",
+    "eff_plastic_strain", "eff_plastic_strain_rate", "smd_data_9", "smd_stress", "vest", "damage"};
+  fields_restart ={"x0", "molecule", "radius", "rmass", "vfrac", "contact_radius", "esph",
+    "eff_plastic_strain", "eff_plastic_strain_rate", "smd_data_9", "smd_stress", "vest", "damage"};
+  fields_create = {"x0", "vest", "vfrac", "rmass", "radius", "contact_radius", "molecule",
+    "esph", "eff_plastic_strain", "eff_plastic_strain_rate", "smd_data_9", "smd_stress", "damage"};
+  fields_data_atom = {"id", "type", "molecule", "vfrac", "rmass", "radius", "contact_radius",
+    "x0", "x"};
+  fields_data_vel = {"id", "v"};
+  // clang-format on
 
   // set these array sizes based on defines
 
-  atom->add_peratom_change_columns("smd_data_9",NMAT_FULL);
-  atom->add_peratom_change_columns("smd_stress",NMAT_SYMM);
+  atom->add_peratom_change_columns("smd_data_9", NMAT_FULL);
+  atom->add_peratom_change_columns("smd_stress", NMAT_SYMM);
 
   setup_fields();
 }
@@ -115,6 +109,7 @@ void AtomVecSMD::grow_pointers()
   vfrac = atom->vfrac;
   rmass = atom->rmass;
   x0 = atom->x0;
+  x = atom->x;
   radius = atom->radius;
   contact_radius = atom->contact_radius;
   molecule = atom->molecule;
@@ -129,13 +124,11 @@ void AtomVecSMD::grow_pointers()
 /* ----------------------------------------------------------------------
    clear extra forces starting at atom N
    nbytes = # of bytes to clear for a per-atom vector
-   NOTE: does f need to be re-cleared?
 ------------------------------------------------------------------------- */
 
 void AtomVecSMD::force_clear(int n, size_t nbytes)
 {
-  memset(&desph[n],0,nbytes);
-  memset(&f[n][0],0,3*nbytes);
+  memset(&desph[n], 0, nbytes);
 }
 
 /* ----------------------------------------------------------------------
@@ -154,9 +147,9 @@ void AtomVecSMD::create_atom_post(int ilocal)
   contact_radius[ilocal] = 0.5;
   molecule[ilocal] = 1;
 
-  smd_data_9[ilocal][0] = 1.0; // xx
-  smd_data_9[ilocal][4] = 1.0; // yy
-  smd_data_9[ilocal][8] = 1.0; // zz
+  smd_data_9[ilocal][0] = 1.0;    // xx
+  smd_data_9[ilocal][4] = 1.0;    // yy
+  smd_data_9[ilocal][8] = 1.0;    // zz
 }
 
 /* ----------------------------------------------------------------------
@@ -167,6 +160,13 @@ void AtomVecSMD::create_atom_post(int ilocal)
 void AtomVecSMD::data_atom_post(int ilocal)
 {
   esph[ilocal] = 0.0;
+
+  // x and x0 are in Atoms section of data file
+  // reset x0 b/c x may have been modified in Atom::data_atoms()
+  //   for PBC, shift, etc
+  // this means no need for read_data_general_to_restricted() method
+  //   to rotate x0 for general triclinic
+
   x0[ilocal][0] = x[ilocal][0];
   x0[ilocal][1] = x[ilocal][1];
   x0[ilocal][2] = x[ilocal][2];
@@ -180,13 +180,48 @@ void AtomVecSMD::data_atom_post(int ilocal)
   eff_plastic_strain[ilocal] = 0.0;
   eff_plastic_strain_rate[ilocal] = 0.0;
 
-  for (int k = 0; k < NMAT_FULL; k++)
-    smd_data_9[ilocal][k] = 0.0;
+  for (int k = 0; k < NMAT_FULL; k++) smd_data_9[ilocal][k] = 0.0;
 
-  for (int k = 0; k < NMAT_SYMM; k++)
-    smd_stress[ilocal][k] = 0.0;
+  for (int k = 0; k < NMAT_SYMM; k++) smd_stress[ilocal][k] = 0.0;
 
-  smd_data_9[ilocal][0] = 1.0; // xx
-  smd_data_9[ilocal][4] = 1.0; // yy
-  smd_data_9[ilocal][8] = 1.0; // zz
+  smd_data_9[ilocal][0] = 1.0;    // xx
+  smd_data_9[ilocal][4] = 1.0;    // yy
+  smd_data_9[ilocal][8] = 1.0;    // zz
+}
+
+/* ----------------------------------------------------------------------
+   convert info output by write_data from restricted to general triclinic
+   parent class operates on x and data from Velocities section of data file
+   child class operates on original coords x0
+------------------------------------------------------------------------- */
+
+void AtomVecSMD::write_data_restricted_to_general()
+{
+  AtomVec::write_data_restricted_to_general();
+
+  int nlocal = atom->nlocal;
+  memory->create(x0_hold,nlocal,3,"atomvec:x0_hold");
+  if (nlocal) memcpy(&x0_hold[0][0],&x0[0][0],(sizeof(double)*3*nlocal)&MEMCPYMASK);
+  for (int i = 0; i < nlocal; i++)
+    domain->restricted_to_general_coords(x0[i]);
+
+}
+
+/* ----------------------------------------------------------------------
+   restore info output by write_data to restricted triclinic
+   original data is in "hold" arrays
+   parent class operates on x and data from Velocities section of data file
+   child class operates on original coords x0
+------------------------------------------------------------------------- */
+
+void AtomVecSMD::write_data_restore_restricted()
+{
+  AtomVec::write_data_restore_restricted();
+
+  if (!x0_hold) return;
+
+  int nlocal = atom->nlocal;
+  memcpy(&x0[0][0],&x0_hold[0][0],(sizeof(double)*3*nlocal)&MEMCPYMASK);
+  memory->destroy(x0_hold);
+  x0_hold = nullptr;
 }

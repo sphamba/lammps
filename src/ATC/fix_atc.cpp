@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/
-   Steve Plimpton, sjplimp@sandia.gov, Sandia National Laboratories
+   LAMMPS development team: developers@lammps.org, Sandia National Laboratories
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -18,18 +18,19 @@
 #include "comm.h"
 #include "error.h"
 #include "group.h"
-#include "neigh_request.h"
 #include "neighbor.h"
 
+#include "ATC_Error.h"
 #include "ATC_Method.h"
-#include "ATC_TransferKernel.h"
-#include "ATC_TransferPartitionOfUnity.h"
 #include "ATC_CouplingEnergy.h"
 #include "ATC_CouplingMomentum.h"
 #include "ATC_CouplingMass.h"
 #include "ATC_CouplingMomentumEnergy.h"
+#include "ATC_TransferKernel.h"
+#include "ATC_TransferPartitionOfUnity.h"
+#include "ATC_TypeDefs.h"
+#include "ExtrinsicModel.h"
 #include "LammpsInterface.h"
-
 #include <cstring>
 
 using namespace LAMMPS_NS;
@@ -285,7 +286,7 @@ FixATC::FixATC(LAMMPS *lmp, int narg, char **arg) : Fix(lmp, narg, arg),
   int me = ATC::LammpsInterface::instance()->comm_rank();
 
   string groupName(arg[1]);
-  int igroup = group->find(groupName.c_str());
+  int igroup = group->find(groupName);
   int atomCount = group->count(igroup);
 
   try {
@@ -558,11 +559,7 @@ int FixATC::modify_param(int narg, char** arg)
 void FixATC::init()
 {
   // Guarantee construction of full neighborlist
-  int irequest = neighbor->request(this,instance_me);
-  neighbor->requests[irequest]->pair = 0;
-  neighbor->requests[irequest]->fix = 1;
-  neighbor->requests[irequest]->half = 0;
-  neighbor->requests[irequest]->full = 1;
+  neighbor->add_request(this, NeighConst::REQ_FULL);
 
   // create computes, if necessary
   atc_->init_computes();
@@ -575,7 +572,7 @@ void FixATC::min_setup(int vflag)
 
 void FixATC::setup(int /* vflag */)
 {
-  comm->forward_comm_fix(this);
+  comm->forward_comm(this);
 
   try {
     atc_->initialize();
@@ -814,7 +811,7 @@ void FixATC::pre_neighbor()
 {
   try {
     atc_->pre_neighbor();
-    comm->forward_comm_fix(this);
+    comm->forward_comm(this);
   }
   catch (ATC::ATC_Error& atcError) {
     ATC::LammpsInterface::instance()->print_msg(atcError.error_description());

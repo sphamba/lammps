@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -16,22 +16,23 @@
    Contributing authors: Axel Kohlmeyer (Temple U)
 ------------------------------------------------------------------------- */
 
-#include "omp_compat.h"
 #include "fix_nh_omp.h"
-#include <cmath>
+
 #include "atom.h"
 #include "compute.h"
 #include "domain.h"
 #include "error.h"
-#include "modify.h"
 
+#include <cmath>
+
+#include "omp_compat.h"
 using namespace LAMMPS_NS;
 using namespace FixConst;
 
 enum{NOBIAS,BIAS};
 enum{ISO,ANISO,TRICLINIC};
 
-#define TILTMAX 1.5
+static constexpr double TILTMAX = 1.5;
 
 typedef struct { double x,y,z; } dbl3_t;
 
@@ -66,9 +67,7 @@ void FixNHOMP::remap()
         domain->x2lamda(x[i],x[i]);
   }
 
-  if (nrigid)
-    for (int i = 0; i < nrigid; i++)
-      modify->fix[rfix[i]]->deform(0);
+  for (auto &ifix : rfix) ifix->deform(0);
 
   // reset global and local box to new size/shape
 
@@ -216,9 +215,7 @@ void FixNHOMP::remap()
         domain->lamda2x(x[i],x[i]);
   }
 
-  if (nrigid)
-    for (int i = 0; i < nrigid; i++)
-      modify->fix[rfix[i]]->deform(1);
+  for (auto &ifix : rfix) ifix->deform(1);
 }
 
 
@@ -231,7 +228,7 @@ void FixNHOMP::nh_v_press()
   const double factor0 = exp(-dt4*(omega_dot[0]+mtk_term2));
   const double factor1 = exp(-dt4*(omega_dot[1]+mtk_term2));
   const double factor2 = exp(-dt4*(omega_dot[2]+mtk_term2));
-  dbl3_t * _noalias const v = (dbl3_t *) atom->v[0];
+  auto * _noalias const v = (dbl3_t *) atom->v[0];
   const int * _noalias const mask = atom->mask;
   const int nlocal = (igroup == atom->firstgroup) ? atom->nfirst : atom->nlocal;
 
@@ -283,8 +280,8 @@ void FixNHOMP::nh_v_press()
 
 void FixNHOMP::nve_v()
 {
-  dbl3_t * _noalias const v = (dbl3_t *) atom->v[0];
-  const dbl3_t * _noalias const f = (dbl3_t *) atom->f[0];
+  auto * _noalias const v = (dbl3_t *) atom->v[0];
+  const auto * _noalias const f = (dbl3_t *) atom->f[0];
   const int * _noalias const mask = atom->mask;
   const int nlocal = (igroup == atom->firstgroup) ? atom->nfirst : atom->nlocal;
 
@@ -324,8 +321,8 @@ void FixNHOMP::nve_v()
 
 void FixNHOMP::nve_x()
 {
-  dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
-  const dbl3_t * _noalias const v = (dbl3_t *) atom->v[0];
+  auto * _noalias const x = (dbl3_t *) atom->x[0];
+  const auto * _noalias const v = (dbl3_t *) atom->v[0];
   const int * _noalias const mask = atom->mask;
   const int nlocal = (igroup == atom->firstgroup) ? atom->nfirst : atom->nlocal;
 
@@ -348,7 +345,7 @@ void FixNHOMP::nve_x()
 
 void FixNHOMP::nh_v_temp()
 {
-  dbl3_t * _noalias const v = (dbl3_t *) atom->v[0];
+  auto * _noalias const v = (dbl3_t *) atom->v[0];
   const int * _noalias const mask = atom->mask;
   const int nlocal = (igroup == atom->firstgroup) ? atom->nfirst : atom->nlocal;
 

@@ -14,6 +14,7 @@ letter abbreviation can be used:
 * :ref:`-m or -mpicolor <mpicolor>`
 * :ref:`-c or -cite <cite>`
 * :ref:`-nc or -nocite <nocite>`
+* :ref:`-nb or -nonbuf <nonbuf>`
 * :ref:`-pk or -package <package>`
 * :ref:`-p or -partition <partition>`
 * :ref:`-pl or -plog <plog>`
@@ -21,6 +22,7 @@ letter abbreviation can be used:
 * :ref:`-ro or -reorder <reorder>`
 * :ref:`-r2data or -restart2data <restart2data>`
 * :ref:`-r2dump or -restart2dump <restart2dump>`
+* :ref:`-r2info or -restart2info <restart2info>`
 * :ref:`-sc or -screen <screen>`
 * :ref:`-sr or skiprun <skiprun>`
 * :ref:`-sf or -suffix <suffix>`
@@ -30,8 +32,8 @@ For example, the lmp_mpi executable might be launched as follows:
 
 .. code-block:: bash
 
-   $ mpirun -np 16 lmp_mpi -v f tmp.out -l my.log -sc none -i in.alloy
-   $ mpirun -np 16 lmp_mpi -var f tmp.out -log my.log -screen none -in in.alloy
+   mpirun -np 16 lmp_mpi -v f tmp.out -l my.log -sc none -i in.alloy
+   mpirun -np 16 lmp_mpi -var f tmp.out -log my.log -screen none -in in.alloy
 
 ----------
 
@@ -92,25 +94,24 @@ switch is not set (the default), LAMMPS will operate as if the KOKKOS
 package were not installed; i.e. you can run standard LAMMPS or with
 the GPU or OPENMP packages, for testing or benchmarking purposes.
 
-Additional optional keyword/value pairs can be specified which
-determine how Kokkos will use the underlying hardware on your
-platform.  These settings apply to each MPI task you launch via the
-"mpirun" or "mpiexec" command.  You may choose to run one or more MPI
-tasks per physical node.  Note that if you are running on a desktop
-machine, you typically have one physical node.  On a cluster or
-supercomputer there may be dozens or 1000s of physical nodes.
+Additional optional keyword/value pairs can be specified which determine
+how Kokkos will use the underlying hardware on your platform.  These
+settings apply to each MPI task you launch via the ``mpirun`` or
+``mpiexec`` command.  You may choose to run one or more MPI tasks per
+physical node.  Note that if you are running on a desktop machine, you
+typically have one physical node.  On a cluster or supercomputer there
+may be dozens or 1000s of physical nodes.
 
 Either the full word or an abbreviation can be used for the keywords.
 Note that the keywords do not use a leading minus sign.  I.e. the
 keyword is "t", not "-t".  Also note that each of the keywords has a
 default setting.  Examples of when to use these options and what
-settings to use on different platforms is given on the :doc:`KOKKOS package <Speed_kokkos>`
-doc page.
+settings to use on different platforms is given on the :doc:`KOKKOS
+package <Speed_kokkos>` doc page.
 
 * d or device
 * g or gpus
 * t or threads
-* n or numa
 
 .. parsed-literal::
 
@@ -147,9 +148,9 @@ one of these 4 environment variables
    MV2_COMM_WORLD_LOCAL_RANK (Mvapich)
    OMPI_COMM_WORLD_LOCAL_RANK (OpenMPI)
 
-which are initialized by the "srun", "mpirun" or "mpiexec" commands.
-The environment variable setting for each MPI rank is used to assign a
-unique GPU ID to the MPI task.
+which are initialized by the ``srun``, ``mpirun``, or ``mpiexec``
+commands.  The environment variable setting for each MPI rank is used to
+assign a unique GPU ID to the MPI task.
 
 .. parsed-literal::
 
@@ -163,19 +164,10 @@ the number of physical cores per node, to use your available hardware
 optimally.  This also sets the number of threads used by the host when
 LAMMPS is compiled with CUDA=yes.
 
-.. parsed-literal::
+.. deprecated:: 22Dec2022
 
-   numa Nm
-
-This option is only relevant when using pthreads with hwloc support.
-In this case Nm defines the number of NUMA regions (typically sockets)
-on a node which will be utilized by a single MPI rank.  By default Nm
-= 1.  If this option is used the total number of worker-threads per
-MPI rank is threads\*numa.  Currently it is always almost better to
-assign at least one MPI rank per NUMA region, and leave numa set to
-its default value of 1. This is because letting a single process span
-multiple NUMA regions induces a significant amount of cross NUMA data
-traffic which is slow.
+Support for the "numa" or "n" option was removed as its functionality
+was ignored in Kokkos for some time already.
 
 ----------
 
@@ -226,15 +218,6 @@ other executable(s) perform an MPI_Comm_split() with their own colors
 to shrink the MPI_COMM_WORLD communication to be the subset of
 processors they are actually running on.
 
-Currently, this is only used in LAMMPS to perform client/server
-messaging with another application.  LAMMPS can act as either a client
-or server (or both).  More details are given on the :doc:`Howto client/server <Howto_client_server>` doc page.
-
-Specifically, this refers to the "mpi/one" mode of messaging provided
-by the :doc:`message <message>` command and the CSlib library LAMMPS
-links with from the lib/message directory.  See the
-:doc:`message <message>` command for more details.
-
 ----------
 
 .. _cite:
@@ -266,19 +249,39 @@ Disable generating a citation reminder (see above) at all.
 
 ----------
 
+.. _nonbuf:
+
+**-nonbuf**
+
+.. versionadded:: 15Sep2022
+
+Turn off buffering for screen and logfile output.  For performance
+reasons, output to the screen and logfile is usually buffered, i.e.
+output is only written to a file if its buffer - typically 4096 bytes -
+has been filled.  When LAMMPS crashes for some reason, however, that can
+mean that there is important output missing.  With this flag the
+buffering can be turned off (only for screen and logfile output) and any
+output will be committed immediately.  Note that when running in
+parallel with MPI, the screen output may still be buffered by the MPI
+library and this cannot be changed by LAMMPS.  This flag should only be
+used for debugging and not for production simulations as the performance
+impact can be significant, especially for large parallel runs.
+
+----------
+
 .. _package:
 
 **-package style args ....**
 
 Invoke the :doc:`package <package>` command with style and args.  The
 syntax is the same as if the command appeared at the top of the input
-script.  For example "-package gpu 2" or "-pk gpu 2" is the same as
+script.  For example ``-package gpu 2`` or ``-pk gpu 2`` is the same as
 :doc:`package gpu 2 <package>` in the input script.  The possible styles
 and args are documented on the :doc:`package <package>` doc page.  This
 switch can be used multiple times, e.g. to set options for the
 INTEL and OPENMP packages which can be used together.
 
-Along with the "-suffix" command-line switch, this is a convenient
+Along with the ``-suffix`` command-line switch, this is a convenient
 mechanism for invoking accelerator packages and their options without
 having to edit an input script.
 
@@ -297,7 +300,7 @@ specify the number of processors in each partition.  Arguments of the
 form MxN mean M partitions, each with N processors.  Arguments of the
 form N mean a single partition with N processors.  The sum of
 processors in all partitions must equal P.  Thus the command
-"-partition 8x2 4 5" has 10 partitions and runs on a total of 25
+``-partition 8x2 4 5`` has 10 partitions and runs on a total of 25
 processors.
 
 Running with multiple partitions can be useful for running
@@ -322,7 +325,7 @@ writes log information to file.N. If file is none, then no partition
 log files are created.  This overrides the filename specified in the
 -log command-line option.  This option is useful when working with
 large numbers of partitions, allowing the partition log files to be
-suppressed (-plog none) or placed in a sub-directory (-plog
+suppressed (-plog none) or placed in a subdirectory (-plog
 replica_files/log.lammps) If this option is not used the log file for
 partition N is log.lammps.N or whatever is specified by the -log
 command-line option.
@@ -339,7 +342,7 @@ partition screen files are created.  This overrides the filename
 specified in the -screen command-line option.  This option is useful
 when working with large numbers of partitions, allowing the partition
 screen files to be suppressed (-pscreen none) or placed in a
-sub-directory (-pscreen replica_files/screen).  If this option is not
+subdirectory (-pscreen replica_files/screen).  If this option is not
 used the screen file for partition N is screen.N or whatever is
 specified by the -screen command-line option.
 
@@ -360,10 +363,10 @@ Reorder the processors in the MPI communicator used to instantiate
 LAMMPS, in one of several ways.  The original MPI communicator ranks
 all P processors from 0 to P-1.  The mapping of these ranks to
 physical processors is done by MPI before LAMMPS begins.  It may be
-useful in some cases to alter the rank order.  E.g. to insure that
+useful in some cases to alter the rank order.  E.g. to ensure that
 cores within each node are ranked in a desired order.  Or when using
 the :doc:`run_style verlet/split <run_style>` command with 2 partitions
-to insure that a specific Kspace processor (in the second partition) is
+to ensure that a specific Kspace processor (in the second partition) is
 matched up with a specific set of processors in the first partition.
 See the :doc:`General tips <Speed_tips>` page for more details.
 
@@ -375,8 +378,8 @@ processors will be in the first partition, the second set in the second
 partition.  The -reorder command-line switch can alter this so that
 the first N procs in the first partition and one proc in the second partition
 will be ordered consecutively, e.g. as the cores on one physical node.
-This can boost performance.  For example, if you use "-reorder nth 4"
-and "-partition 9 3" and you are running on 12 processors, the
+This can boost performance.  For example, if you use ``-reorder nth 4``
+and ``-partition 9 3`` and you are running on 12 processors, the
 processors will be reordered from
 
 .. parsed-literal::
@@ -396,7 +399,7 @@ so that the processors in each partition will be
    0 1 2 4 5 6 8 9 10
    3 7 11
 
-See the "processors" command for how to insure processors from each
+See the "processors" command for how to ensure processors from each
 partition could then be grouped optimally for quad-core nodes.
 
 If the keyword is *custom*, then a file that specifies a permutation
@@ -432,7 +435,7 @@ the LAMMPS simulation domain.
 
 .. _restart2data:
 
-**-restart2data restartfile [remap] datafile keyword value ...**
+**-restart2data restartfile datafile keyword value ...**
 
 Convert the restart file into a data file and immediately exit.  This
 is the same operation as if the following 2-line input script were
@@ -440,7 +443,7 @@ run:
 
 .. code-block:: LAMMPS
 
-   read_restart restartfile [remap]
+   read_restart restartfile
    write_data datafile keyword value ...
 
 The specified restartfile and/or datafile name may contain the wild-card
@@ -452,28 +455,21 @@ Note that a filename such as file.\* may need to be enclosed in quotes or
 the "\*" character prefixed with a backslash ("\") to avoid shell
 expansion of the "\*" character.
 
-Following restartfile argument, the optional word "remap" may be used.
-This has the same effect like adding it to a
-:doc:`read_restart <read_restart>` command, and operates as explained on
-its doc page.  This is useful if reading the restart file triggers an
-error that atoms have been lost.  In that case, use of the remap flag
-should allow the data file to still be produced.
-
-The syntax following restartfile (or remap), namely
+The syntax following restartfile, namely
 
 .. parsed-literal::
 
    datafile keyword value ...
 
 is identical to the arguments of the :doc:`write_data <write_data>`
-command.  See its page for details.  This includes its
+command.  See its documentation page for details.  This includes its
 optional keyword/value settings.
 
 ----------
 
 .. _restart2dump:
 
-**-restart2dump restartfile [remap] group-ID dumpstyle dumpfile arg1 arg2 ...**
+**-restart2dump restartfile group-ID dumpstyle dumpfile arg1 arg2 ...**
 
 Convert the restart file into a dump file and immediately exit.  This
 is the same operation as if the following 2-line input script were
@@ -481,11 +477,11 @@ run:
 
 .. code-block:: LAMMPS
 
-   read_restart restartfile [remap]
+   read_restart restartfile
    write_dump group-ID dumpstyle dumpfile arg1 arg2 ...
 
 Note that the specified restartfile and dumpfile names may contain
-wild-card characters ("\*","%") as explained on the
+wild-card characters ("\*" or "%") as explained on the
 :doc:`read_restart <read_restart>` and :doc:`write_dump <write_dump>` doc
 pages.  The use of "%" means that a parallel restart file and/or
 parallel dump file can be read and/or written.  Note that a filename
@@ -493,25 +489,49 @@ such as file.\* may need to be enclosed in quotes or the "\*" character
 prefixed with a backslash ("\") to avoid shell expansion of the "\*"
 character.
 
-Note that following the restartfile argument, the optional word "remap"
-can be used.  This has the effect as adding it to the
-:doc:`read_restart <read_restart>` command, as explained on its doc page.
-This is useful if reading the restart file triggers an error that atoms
-have been lost.  In that case, use of the remap flag should allow the
-dump file to still be produced.
-
-The syntax following restartfile (or remap), namely
+The syntax following restartfile, namely
 
 .. code-block:: LAMMPS
 
    group-ID dumpstyle dumpfile arg1 arg2 ...
 
 is identical to the arguments of the :doc:`write_dump <write_dump>`
-command.  See its page for details.  This includes what per-atom
-fields are written to the dump file and optional dump_modify settings,
-including ones that affect how parallel dump files are written, e.g.
-the *nfile* and *fileper* keywords.  See the
+command.  See its documentation page for details.  This includes what
+per-atom fields are written to the dump file and optional dump_modify
+settings, including ones that affect how parallel dump files are written,
+e.g. the *nfile* and *fileper* keywords.  See the
 :doc:`dump_modify <dump_modify>` page for details.
+
+----------
+
+.. _restart2info:
+
+**-restart2info restartfile keyword ...**
+
+.. versionadded:: 29Aug2024
+
+Write out some info about the restart file and and immediately exit.
+This is the same operation as if the following 2-line input script were
+run:
+
+.. code-block:: LAMMPS
+
+   read_restart restartfile
+   info system group computes fixes
+
+The specified restartfile name may contain the wild-card character "\*".
+The restartfile name may also contain the wild-card character "%".  The
+meaning of these characters is explained on the :doc:`read_restart
+<read_restart>` documentation.  The use of "%" means that a parallel
+restart file can be read.  Note that a filename such as file.\* may need
+to be enclosed in quotes or the "\*" character prefixed with a backslash
+("\") to avoid shell expansion of the "\*" character.
+
+Optional keywords may follow the restartfile argument.  These must be
+valid keywords for the :doc:`info command <info>`.  The most useful
+ones - *system*, *group*, *computes*, and *fixes* - are already applied.
+Appending keywords like *coeffs* or *communication* may provide
+additional useful information stored in the restart file.
 
 ----------
 
@@ -564,11 +584,11 @@ style that accepts arguments. It allows for two packages to be
 specified. The first package specified is the default and will be used
 if it is available. If no style is available for the first package,
 the style for the second package will be used if available. For
-example, "-suffix hybrid intel omp" will use styles from the
+example, ``-suffix hybrid intel omp`` will use styles from the
 INTEL package if they are installed and available, but styles for
 the OPENMP package otherwise.
 
-Along with the "-package" command-line switch, this is a convenient
+Along with the ``-package`` command-line switch, this is a convenient
 mechanism for invoking accelerator packages and their options without
 having to edit an input script.
 
@@ -585,34 +605,34 @@ variant version does not exist, the standard version is created.
 For the GPU package, using this command-line switch also invokes the
 default GPU settings, as if the command "package gpu 1" were used at
 the top of your input script.  These settings can be changed by using
-the "-package gpu" command-line switch or the :doc:`package gpu <package>` command in your script.
+the ``-package gpu`` command-line switch or the :doc:`package gpu <package>` command in your script.
 
 For the INTEL package, using this command-line switch also
 invokes the default INTEL settings, as if the command "package
 intel 1" were used at the top of your input script.  These settings
-can be changed by using the "-package intel" command-line switch or
+can be changed by using the ``-package intel`` command-line switch or
 the :doc:`package intel <package>` command in your script. If the
 OPENMP package is also installed, the hybrid style with "intel omp"
 arguments can be used to make the omp suffix a second choice, if a
 requested style is not available in the INTEL package.  It will
 also invoke the default OPENMP settings, as if the command "package
 omp 0" were used at the top of your input script.  These settings can
-be changed by using the "-package omp" command-line switch or the
+be changed by using the ``-package omp`` command-line switch or the
 :doc:`package omp <package>` command in your script.
 
 For the KOKKOS package, using this command-line switch also invokes
 the default KOKKOS settings, as if the command "package kokkos" were
 used at the top of your input script.  These settings can be changed
-by using the "-package kokkos" command-line switch or the :doc:`package kokkos <package>` command in your script.
+by using the ``-package kokkos`` command-line switch or the :doc:`package kokkos <package>` command in your script.
 
 For the OMP package, using this command-line switch also invokes the
 default OMP settings, as if the command "package omp 0" were used at
 the top of your input script.  These settings can be changed by using
-the "-package omp" command-line switch or the :doc:`package omp <package>` command in your script.
+the ``-package omp`` command-line switch or the :doc:`package omp <package>` command in your script.
 
 The :doc:`suffix <suffix>` command can also be used within an input
 script to set a suffix, or to turn off or back on any suffix setting
-made via the command line.
+made via the command-line.
 
 ----------
 

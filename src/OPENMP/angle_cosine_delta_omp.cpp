@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -16,19 +16,20 @@
    Contributing author: Axel Kohlmeyer (Temple U)
 ------------------------------------------------------------------------- */
 
-#include "omp_compat.h"
 #include "angle_cosine_delta_omp.h"
-#include <cmath>
+
 #include "atom.h"
 #include "comm.h"
 #include "force.h"
 #include "neighbor.h"
 
+#include <cmath>
 
+#include "omp_compat.h"
 #include "suffix.h"
 using namespace LAMMPS_NS;
 
-#define SMALL 0.001
+static constexpr double SMALL = 0.001;
 
 /* ---------------------------------------------------------------------- */
 
@@ -86,8 +87,8 @@ void AngleCosineDeltaOMP::eval(int nfrom, int nto, ThrData * const thr)
   double eangle,f1[3],f3[3];
   double rsq1,rsq2,r1,r2,c,a,cot,a11,a12,a22,b11,b12,b22,c0,s0,s;
 
-  const dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
-  dbl3_t * _noalias const f = (dbl3_t *) thr->get_f()[0];
+  const auto * _noalias const x = (dbl3_t *) atom->x[0];
+  auto * _noalias const f = (dbl3_t *) thr->get_f()[0];
   const int4_t * _noalias const anglelist = (int4_t *) neighbor->anglelist[0];
   const int nlocal = atom->nlocal;
   eangle = 0.0;
@@ -128,8 +129,6 @@ void AngleCosineDeltaOMP::eval(int nfrom, int nto, ThrData * const thr)
 
     s = sqrt(1.0 - c*c);
     if (s < SMALL) s = SMALL;
-    s = 1.0/s;
-
     cot = c/s;
 
     // force & energy

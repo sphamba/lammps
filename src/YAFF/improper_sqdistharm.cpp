@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -28,15 +28,16 @@
 #include "memory.h"
 #include "error.h"
 
-
 using namespace LAMMPS_NS;
-
-#define TOLERANCE 0.05
-#define SMALL     0.001
 
 /* ---------------------------------------------------------------------- */
 
-ImproperSQDistHarm::ImproperSQDistHarm(LAMMPS *lmp) : Improper(lmp) {}
+ImproperSQDistHarm::ImproperSQDistHarm(LAMMPS *lmp) : Improper(lmp)
+{
+  // the fourth atom in the quadruplet is the atom of symmetry
+
+  symmatoms[3] = 1;
+}
 
 /* ---------------------------------------------------------------------- */
 
@@ -216,7 +217,7 @@ void ImproperSQDistHarm::allocate()
 void ImproperSQDistHarm::coeff(int narg, char **arg)
 {
 //  if (which > 0) return;
-  if (narg != 3) error->all(FLERR,"Incorrect args for improper coefficients");
+  if (narg != 3) error->all(FLERR,"Incorrect args for improper coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi;
@@ -236,7 +237,7 @@ void ImproperSQDistHarm::coeff(int narg, char **arg)
     count++;
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for improper coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for improper coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -265,4 +266,15 @@ void ImproperSQDistHarm::read_restart(FILE *fp)
   MPI_Bcast(&chi[1],atom->nimpropertypes,MPI_DOUBLE,0,world);
 
   for (int i = 1; i <= atom->nimpropertypes; i++) setflag[i] = 1;
+}
+
+/* ----------------------------------------------------------------------
+   return ptr to internal members upon request
+------------------------------------------------------------------------ */
+
+void *ImproperSQDistHarm::extract(const char *str, int &dim)
+{
+  dim = 1;
+  if (strcmp(str, "k") == 0) return (void *) k;
+  return nullptr;
 }

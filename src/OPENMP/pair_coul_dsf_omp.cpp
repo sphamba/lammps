@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    This software is distributed under the GNU General Public License.
 
@@ -13,26 +13,23 @@
    Contributing author: Axel Kohlmeyer (Temple U)
 ------------------------------------------------------------------------- */
 
-#include "omp_compat.h"
 #include "pair_coul_dsf_omp.h"
-#include <cmath>
+
 #include "atom.h"
 #include "comm.h"
+#include "ewald_const.h"
 #include "force.h"
 #include "neigh_list.h"
-
-#include "suffix.h"
 #include "math_const.h"
-using namespace LAMMPS_NS;
-using namespace MathConst;
 
-#define EWALD_F   1.12837917
-#define EWALD_P   0.3275911
-#define A1        0.254829592
-#define A2       -0.284496736
-#define A3        1.421413741
-#define A4       -1.453152027
-#define A5        1.061405429
+#include "omp_compat.h"
+#include "suffix.h"
+
+#include <cmath>
+
+using namespace LAMMPS_NS;
+using namespace EwaldConst;
+using MathConst::MY_PIS;
 
 /* ---------------------------------------------------------------------- */
 
@@ -95,8 +92,8 @@ void PairCoulDSFOMP::eval(int iifrom, int iito, ThrData * const thr)
 
   ecoul = 0.0;
 
-  const dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
-  dbl3_t * _noalias const f = (dbl3_t *) thr->get_f()[0];
+  const auto * _noalias const x = (dbl3_t *) atom->x[0];
+  auto * _noalias const f = (dbl3_t *) thr->get_f()[0];
   const double * _noalias const q = atom->q;
   const int nlocal = atom->nlocal;
   const double * _noalias const special_coul = force->special_coul;

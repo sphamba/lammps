@@ -24,9 +24,15 @@ include:
     - cmake/**
     - doc
     - doc/src/**
-    - python
+    - fortran
+    - lib/**
+    - python/**
     - src/**
-    - tools/coding_standard
+    - tools/**
+    - unittest/**
+    - examples/COUPLE/**
+    - examples/plugins/**
+    - examples/PACKAGES/**
 patterns:
     - "*.c"
     - "*.cmake"
@@ -36,13 +42,26 @@ patterns:
     - "*.py"
     - "*.rst"
     - "*.sh"
+    - "*.f90"
     - ".gitignore"
     - "README"
     - "requirements.txt"
 """
 
 def check_homepage(f):
-    pattern = re.compile(r'.*lammps.sandia.gov.*')    # lgtm [py/incomplete-hostname-regexp]
+    pattern = re.compile(r'.*(lammps.sandia.gov|www.cs.sandia.gov).*')    # lgtm [py/incomplete-hostname-regexp]
+    lineno = 1
+    errors = set()
+
+    for line in f:
+        if pattern.match(line):
+            errors.add(lineno)
+        lineno += 1
+
+    return errors
+
+def check_email(f):
+    pattern = re.compile(r'.*sjplimp@sandia.gov.*')    # lgtm [py/incomplete-hostname-regexp]
     lineno = 1
     errors = set()
 
@@ -54,9 +73,10 @@ def check_homepage(f):
     return errors
 
 def check_file(path):
-    if path.find('homepage.py') >= 0: return { 'homepage_errors' : '' }
+    if path.find('homepage.py') >= 0: return { 'homepage_errors' : '', 'email_errors' : '' }
     encoding = 'UTF-8'
     homepage_errors = set()
+    email_errors = set()
     try:
         with open(path, 'r') as f:
             homepage_errors = check_homepage(f)
@@ -67,9 +87,20 @@ def check_file(path):
                 homepage_errors = check_homepage(f)
         except Exception:
             encoding = 'unknown'
+    try:
+        with open(path, 'r') as f:
+            email_errors = check_email(f)
+    except UnicodeDecodeError:
+        encoding = 'ISO-8859-1'
+        try:
+            with open(path, 'r', encoding=encoding) as f:
+                email_errors = check_email(f)
+        except Exception:
+            encoding = 'unknown'
 
     return {
         'homepage_errors': homepage_errors,
+        'email_errors': email_errors,
         'encoding': encoding
     }
 
@@ -84,6 +115,9 @@ def fix_file(path, check_result):
                 newline = newline.replace("http://lammps.sandia.gov,","https://www.lammps.org/")
                 newline = newline.replace("lammps.sandia.gov","www.lammps.org")
                 newline = newline.replace("http://www.lammps.org","https://www.lammps.org")
+                newline = newline.replace("www.cs.sandia.gov/~sjplimp/lammps.html","https://www.lammps.org")
+                newline = newline.replace("Steve Plimpton, sjplimp@sandia.gov","LAMMPS Development team: developers@lammps.org")
+                newline = newline.replace("Steve Plimpton, sjplimp@sandia.gov, Sandia National Laboratories","LAMMPS Development team: developers@lammps.org")
                 print(newline, end='', file=out)
     shutil.copymode(path, newfile)
     shutil.move(newfile, path)
@@ -104,11 +138,14 @@ def check_folder(directory, config, fix=False, verbose=False):
             print("Checking file:", path)
 
         result = check_file(path)
-
         has_resolvable_errors = False
 
         for lineno in result['homepage_errors']:
             print("[Error] Incorrect LAMMPS homepage @ {}:{}".format(path, lineno))
+            has_resolvable_errors = True
+
+        for lineno in result['email_errors']:
+            print("[Error] Incorrect Developer email @ {}:{}".format(path, lineno))
             has_resolvable_errors = True
 
         if has_resolvable_errors:
@@ -121,7 +158,7 @@ def check_folder(directory, config, fix=False, verbose=False):
     return success
 
 def main():
-    parser = argparse.ArgumentParser(description='Utility for detecting and fixing whitespace issues in LAMMPS')
+    parser = argparse.ArgumentParser(description='Utility for detecting and correct the LAMMPS homepage URL and developer email in LAMMPS source files')
     parser.add_argument('-c', '--config', metavar='CONFIG_FILE', help='location of a optional configuration file')
     parser.add_argument('-f', '--fix', action='store_true', help='automatically fix URLs')
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose output')

@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -240,7 +240,7 @@ void PairDSMC::settings(int narg, char **arg)
 
 void PairDSMC::coeff(int narg, char **arg)
 {
-  if (narg < 3 || narg > 4) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (narg < 3 || narg > 4) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -262,7 +262,7 @@ void PairDSMC::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -271,6 +271,8 @@ void PairDSMC::coeff(int narg, char **arg)
 
 void PairDSMC::init_style()
 {
+  if (!atom->mass) error->all(FLERR, "Pair style dsmc requires per atom type masses");
+
   ncellsx = ncellsy = ncellsz = 1;
   while (((domain->boxhi[0] - domain->boxlo[0])/ncellsx) > max_cell_size)
     ncellsx++;

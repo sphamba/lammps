@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -32,7 +32,7 @@
 using namespace LAMMPS_NS;
 using namespace MathConst;
 
-#define TOLERANCE 0.05
+static constexpr double TOLERANCE = 0.05;
 
 /* ---------------------------------------------------------------------- */
 
@@ -61,7 +61,6 @@ DihedralFourier::~DihedralFourier()
     delete [] shift;
     delete [] cos_shift;
     delete [] sin_shift;
-
   }
 }
 
@@ -274,7 +273,7 @@ void DihedralFourier::allocate()
 
 void DihedralFourier::coeff(int narg, char **arg)
 {
-  if (narg < 4) error->all(FLERR,"Incorrect args for dihedral coefficients");
+  if (narg < 4) error->all(FLERR,"Incorrect args for dihedral coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi;
@@ -323,7 +322,7 @@ void DihedralFourier::coeff(int narg, char **arg)
     count++;
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for dihedral coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for dihedral coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -332,7 +331,6 @@ void DihedralFourier::coeff(int narg, char **arg)
 
 void DihedralFourier::write_restart(FILE *fp)
 {
-
   fwrite(&nterms[1],sizeof(int),atom->ndihedraltypes,fp);
   for (int i = 1; i <= atom->ndihedraltypes; i++) {
     fwrite(k[i],sizeof(double),nterms[i],fp);

@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -27,19 +27,18 @@
 #include "comm.h"
 #include "error.h"
 #include "force.h"
+#include "info.h"
 #include "memory.h"
-#include "neighbor.h"
 #include "neigh_list.h"
+#include "neighbor.h"
 #include "potential_file_reader.h"
-#include "tokenizer.h"
 
 #include <cmath>
 #include <cstring>
 
 using namespace LAMMPS_NS;
 
-#define MAXLINE 1024
-#define DELTA 4
+static constexpr int DELTA = 4;
 
 /* ---------------------------------------------------------------------- */
 
@@ -161,15 +160,15 @@ void PairKolmogorovCrespiZ::compute(int eflag, int vflag)
         if (evflag) {
           ev_tally(i, j, nlocal, newton_pair, evdwl, 0.0, fpair, delx, dely, delz);
           if (vflag_either) {
-            double fi[3],fj[3];
+            double fi[3], fj[3];
             fi[0] = delx * fpair1;
             fi[1] = dely * fpair1;
             fi[2] = 0;
             fj[0] = -delx * fpair1;
             fj[1] = -dely * fpair1;
             fj[2] = 0;
-            v_tally2_newton(i,fi,x[i]);
-            v_tally2_newton(j,fj,x[j]);
+            v_tally2_newton(i, fi, x[i]);
+            v_tally2_newton(j, fj, x[j]);
           }
         }
       }
@@ -237,7 +236,7 @@ void PairKolmogorovCrespiZ::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR, "Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR, "Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -247,9 +246,9 @@ void PairKolmogorovCrespiZ::coeff(int narg, char **arg)
 void PairKolmogorovCrespiZ::init_style()
 {
   if (force->newton_pair == 0)
-    error->all(FLERR,"Pair style kolmogorov/crespi/z requires newton pair on");
+    error->all(FLERR, Error::NOLASTLINE, "Pair style kolmogorov/crespi/z requires newton pair on");
 
-  neighbor->request(this,instance_me);
+  neighbor->add_request(this);
 }
 
 /* ----------------------------------------------------------------------
@@ -258,8 +257,11 @@ void PairKolmogorovCrespiZ::init_style()
 
 double PairKolmogorovCrespiZ::init_one(int i, int j)
 {
-  if (setflag[i][j] == 0) error->all(FLERR, "All pair coeffs are not set");
-  if (!offset_flag) error->all(FLERR, "Must use 'pair_modify shift yes' with this pair style");
+  if (setflag[i][j] == 0)
+    error->all(FLERR, Error::NOLASTLINE,
+               "All pair coeffs are not set. Status:\n" + Info::get_pair_coeff_status(lmp));
+  if (!offset_flag)
+    error->all(FLERR, Error::NOLASTLINE, "Must use 'pair_modify shift yes' with this pair style");
 
   if (offset_flag && (cut_global > 0.0)) {
     int iparam_ij = elem2param[map[i]][map[j]];
@@ -361,7 +363,7 @@ void PairKolmogorovCrespiZ::read_file(char *filename)
       params[nparams].z06 = pow(params[nparams].z0, 6);
 
       nparams++;
-      if (nparams >= pow(atom->ntypes, 3)) break;
+      if (nparams >= pow((double)atom->ntypes, 3)) break;
     }
   }
   MPI_Bcast(&nparams, 1, MPI_INT, 0, world);
@@ -380,11 +382,15 @@ void PairKolmogorovCrespiZ::read_file(char *filename)
       int n = -1;
       for (int m = 0; m < nparams; m++) {
         if (i == params[m].ielement && j == params[m].jelement) {
-          if (n >= 0) error->all(FLERR, "Potential file has duplicate entry");
+          if (n >= 0)
+            error->all(FLERR, "Potential file has a duplicate entry for: {} {}", elements[i],
+                       elements[j]);
           n = m;
         }
       }
-      if (n < 0) error->all(FLERR, "Potential file is missing an entry");
+      if (n < 0)
+        error->all(FLERR, "Potential file is missing an entry for: {} {}", elements[i],
+                   elements[j]);
       elem2param[i][j] = n;
     }
   }

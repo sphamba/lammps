@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -29,7 +29,7 @@
 
 using namespace LAMMPS_NS;
 
-#define DELTA 10000
+static constexpr int DELTA = 10000;
 
 /* ---------------------------------------------------------------------- */
 
@@ -383,7 +383,7 @@ void PairBodyNparticle::settings(int narg, char **arg)
 void PairBodyNparticle::coeff(int narg, char **arg)
 {
   if (narg < 4 || narg > 5)
-    error->all(FLERR,"Incorrect args for pair coefficients");
+    error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -407,7 +407,7 @@ void PairBodyNparticle::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -416,13 +416,13 @@ void PairBodyNparticle::coeff(int narg, char **arg)
 
 void PairBodyNparticle::init_style()
 {
-  avec = (AtomVecBody *) atom->style_match("body");
+  avec = dynamic_cast<AtomVecBody *>(atom->style_match("body"));
   if (!avec) error->all(FLERR,"Pair body/nparticle requires atom style body");
   if (strcmp(avec->bptr->style,"nparticle") != 0)
     error->all(FLERR,"Pair body/nparticle requires body style nparticle");
-  bptr = (BodyNparticle *) avec->bptr;
+  bptr = dynamic_cast<BodyNparticle *>(avec->bptr);
 
-  neighbor->request(this,instance_me);
+  neighbor->add_request(this);
 }
 
 /* ----------------------------------------------------------------------

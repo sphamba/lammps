@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -29,11 +29,12 @@
 ------------------------------------------------------------------------- */
 
 #include "fix_rigid_meso.h"
-#include "math_extra.h"
+
 #include "atom.h"
 #include "domain.h"
-#include "memory.h"
 #include "error.h"
+#include "math_extra.h"
+#include "memory.h"
 
 using namespace LAMMPS_NS;
 using namespace FixConst;
@@ -92,6 +93,11 @@ void FixRigidMeso::setup (int vflag) {
     conjqm[ibody][2] *= 2.0;
     conjqm[ibody][3] *= 2.0;
   }
+
+  // Cannot use vremap since its effects aren't propagated to vest
+  //   see RHEO or SPH packages for examples of patches
+  if (domain->deform_vremap)
+    error->all(FLERR, "Fix rigid/meso cannot be used with velocity remapping");
 }
 
 /* ----------------------------------------------------------------------

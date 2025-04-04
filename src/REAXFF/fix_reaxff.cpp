@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -19,7 +19,7 @@
    Please cite the related publication:
    H. M. Aktulga, J. C. Fogarty, S. A. Pandit, A. Y. Grama,
    "Parallel Reactive Molecular Dynamics: Numerical Methods and
-   Algorithmic Techniques", Parallel Computing, in press.
+   Algorithmic Techniques", Parallel Computing, 38 (4-5), 245-259.
 ------------------------------------------------------------------------- */
 
 #include "fix_reaxff.h"
@@ -29,9 +29,8 @@
 using namespace LAMMPS_NS;
 using namespace FixConst;
 
-#define MAX_REAX_BONDS      30
-#define MIN_REAX_BONDS      15
-#define MIN_REAX_HBONDS     25
+static constexpr int MIN_REAX_BONDS  = 15;
+static constexpr int MIN_REAX_HBONDS = 25;
 
 /* ---------------------------------------------------------------------- */
 

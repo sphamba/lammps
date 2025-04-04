@@ -2,7 +2,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -41,12 +41,12 @@ class PairDPDIntel : public PairDPD {
 
  public:
   PairDPDIntel(class LAMMPS *);
-  ~PairDPDIntel();
+  ~PairDPDIntel() override;
 
-  virtual void compute(int, int);
-  void settings(int, char **);
-  void init_style();
-  void read_restart_settings(FILE *);
+  void compute(int, int) override;
+  void settings(int, char **) override;
+  void init_style() override;
+  void read_restart_settings(FILE *) override;
 
  private:
   FixIntel *fix;
@@ -83,7 +83,7 @@ class PairDPDIntel : public PairDPD {
     int *rngi;
 
     ForceConst() : _ntypes(0) {}
-    ~ForceConst() { set_ntypes(0, 0, 0, nullptr, _cop); }
+    ~ForceConst() noexcept(false) { set_ntypes(0, 0, 0, nullptr, _cop); }
 
     void set_ntypes(const int ntypes, const int nthreads, const int max_nbors, Memory *memory,
                     const int cop);
@@ -100,11 +100,3 @@ class PairDPDIntel : public PairDPD {
 
 #endif
 #endif
-
-/* ERROR/WARNING messages:
-
-E: The 'package intel' command is required for /intel styles
-
-Self-explanatory.
-
-*/

@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -57,7 +57,7 @@ void ComputePressureUef::init()
   if (i==modify->nfix)
     error->all(FLERR,"Can't use compute pressure/uef without defining a fix nvt/npt/uef");
   ifix_uef=i;
-  ((FixNHUef*) modify->fix[ifix_uef])->get_ext_flags(ext_flags);
+  (dynamic_cast<FixNHUef*>(modify->fix[ifix_uef]))->get_ext_flags(ext_flags);
 
   if (strcmp(temperature->style,"temp/uef") != 0)
     error->warning(FLERR,"The temperature used in compute pressure/ued is not of style temp/uef");
@@ -104,7 +104,7 @@ void ComputePressureUef::compute_vector()
 {
   invoked_vector = update->ntimestep;
   if (update->vflag_global != invoked_vector)
-    error->all(FLERR,"Virial was not tallied on needed timestep");
+    error->all(FLERR, Error::NOLASTLINE, "Virial was not tallied on needed timestep{}", utils::errorurl(22));
 
   if (force->kspace && kspace_virial && force->kspace->scalar_pressure_flag)
     error->all(FLERR,"Must use 'kspace_modify pressure/scalar no' for "
@@ -127,7 +127,7 @@ void ComputePressureUef::compute_vector()
     else
     {
       double r[3][3];
-      ( (FixNHUef*) modify->fix[ifix_uef])->get_rot(r);
+      ( dynamic_cast<FixNHUef*>(modify->fix[ifix_uef]))->get_rot(r);
       virial_rot(virial,r);
     }
     if (keflag) {
@@ -158,7 +158,7 @@ void ComputePressureUef::compute_vector()
 ------------------------------------------------------------------------- */
 void ComputePressureUef::update_rot()
 {
-    ( (FixNHUef*) modify->fix[ifix_uef])->get_rot(rot);
+    ( dynamic_cast<FixNHUef*>(modify->fix[ifix_uef]))->get_rot(rot);
 }
 
 /* ----------------------------------------------------------------------

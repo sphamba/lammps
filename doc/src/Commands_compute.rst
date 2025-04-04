@@ -1,18 +1,5 @@
-.. table_from_list::
-   :columns: 3
-
-   * :doc:`General commands <Commands_all>`
-   * :doc:`Fix styles <Commands_fix>`
-   * :doc:`Compute styles <Commands_compute>`
-   * :doc:`Pair styles <Commands_pair>`
-   * :ref:`Bond styles <bond>`
-   * :ref:`Angle styles <angle>`
-   * :ref:`Dihedral styles <dihedral>`
-   * :ref:`Improper styles <improper>`
-   * :doc:`KSpace styles <Commands_kspace>`
-
-Compute commands
-================
+Compute styles
+==============
 
 An alphabetic list of all LAMMPS :doc:`compute <compute>` commands.
 Some styles have accelerated versions.  This is indicated by
@@ -20,7 +7,7 @@ additional letters in parenthesis: g = GPU, i = INTEL, k =
 KOKKOS, o = OPENMP, t = OPT.
 
 .. table_from_list::
-   :columns: 5
+   :columns: 4
 
    * :doc:`ackland/atom <compute_ackland_atom>`
    * :doc:`adf <compute_adf>`
@@ -28,10 +15,12 @@ KOKKOS, o = OPENMP, t = OPT.
    * :doc:`angle <compute_angle>`
    * :doc:`angle/local <compute_angle_local>`
    * :doc:`angmom/chunk <compute_angmom_chunk>`
+   * :doc:`ave/sphere/atom (k) <compute_ave_sphere_atom>`
    * :doc:`basal/atom <compute_basal_atom>`
    * :doc:`body/local <compute_body_local>`
    * :doc:`bond <compute_bond>`
    * :doc:`bond/local <compute_bond_local>`
+   * :doc:`born/matrix <compute_born_matrix>`
    * :doc:`centro/atom <compute_centro_atom>`
    * :doc:`centroid/stress/atom <compute_stress_atom>`
    * :doc:`chunk/atom <compute_chunk_atom>`
@@ -43,27 +32,33 @@ KOKKOS, o = OPENMP, t = OPT.
    * :doc:`com/chunk <compute_com_chunk>`
    * :doc:`contact/atom <compute_contact_atom>`
    * :doc:`coord/atom (k) <compute_coord_atom>`
+   * :doc:`count/type <compute_count_type>`
    * :doc:`damage/atom <compute_damage_atom>`
    * :doc:`dihedral <compute_dihedral>`
    * :doc:`dihedral/local <compute_dihedral_local>`
    * :doc:`dilatation/atom <compute_dilatation_atom>`
    * :doc:`dipole <compute_dipole>`
    * :doc:`dipole/chunk <compute_dipole_chunk>`
+   * :doc:`dipole/tip4p <compute_dipole>`
+   * :doc:`dipole/tip4p/chunk <compute_dipole_chunk>`
    * :doc:`displace/atom <compute_displace_atom>`
    * :doc:`dpd <compute_dpd>`
    * :doc:`dpd/atom <compute_dpd_atom>`
    * :doc:`edpd/temp/atom <compute_edpd_temp_atom>`
    * :doc:`efield/atom <compute_efield_atom>`
+   * :doc:`efield/wolf/atom <compute_efield_wolf_atom>`
    * :doc:`entropy/atom <compute_entropy_atom>`
    * :doc:`erotate/asphere <compute_erotate_asphere>`
    * :doc:`erotate/rigid <compute_erotate_rigid>`
-   * :doc:`erotate/sphere <compute_erotate_sphere>`
+   * :doc:`erotate/sphere (k) <compute_erotate_sphere>`
    * :doc:`erotate/sphere/atom <compute_erotate_sphere_atom>`
    * :doc:`event/displace <compute_event_displace>`
    * :doc:`fabric <compute_fabric>`
    * :doc:`fep <compute_fep>`
+   * :doc:`fep/ta <compute_fep_ta>`
    * :doc:`force/tally <compute_tally>`
    * :doc:`fragment/atom <compute_cluster_atom>`
+   * :doc:`gaussian/grid/local (k) <compute_gaussian_grid_local>`
    * :doc:`global/atom <compute_global_atom>`
    * :doc:`group/group <compute_group_group>`
    * :doc:`gyration <compute_gyration>`
@@ -83,14 +78,16 @@ KOKKOS, o = OPENMP, t = OPT.
    * :doc:`ke/atom/eff <compute_ke_atom_eff>`
    * :doc:`ke/eff <compute_ke_eff>`
    * :doc:`ke/rigid <compute_ke_rigid>`
-   * :doc:`mesont <compute_mesont>`
+   * :doc:`composition/atom (k) <compute_composition_atom>`
    * :doc:`mliap <compute_mliap>`
    * :doc:`momentum <compute_momentum>`
    * :doc:`msd <compute_msd>`
    * :doc:`msd/chunk <compute_msd_chunk>`
    * :doc:`msd/nongauss <compute_msd_nongauss>`
+   * :doc:`nbond/atom <compute_nbond_atom>`
    * :doc:`omega/chunk <compute_omega_chunk>`
    * :doc:`orientorder/atom (k) <compute_orientorder_atom>`
+   * :doc:`pace <compute_pace>`
    * :doc:`pair <compute_pair>`
    * :doc:`pair/local <compute_pair_local>`
    * :doc:`pe <compute_pe>`
@@ -98,19 +95,28 @@ KOKKOS, o = OPENMP, t = OPT.
    * :doc:`pe/mol/tally <compute_tally>`
    * :doc:`pe/tally <compute_tally>`
    * :doc:`plasticity/atom <compute_plasticity_atom>`
+   * :doc:`pod/atom <compute_pod_atom>`
+   * :doc:`podd/atom <compute_pod_atom>`
+   * :doc:`pod/local <compute_pod_atom>`
+   * :doc:`pod/global <compute_pod_atom>`
    * :doc:`pressure <compute_pressure>`
-   * :doc:`pressure/cylinder <compute_pressure_cylinder>`
+   * :doc:`pressure/alchemy <compute_pressure_alchemy>`
    * :doc:`pressure/uef <compute_pressure_uef>`
    * :doc:`property/atom <compute_property_atom>`
    * :doc:`property/chunk <compute_property_chunk>`
+   * :doc:`property/grid <compute_property_grid>`
    * :doc:`property/local <compute_property_local>`
    * :doc:`ptm/atom <compute_ptm_atom>`
+   * :doc:`rattlers/atom <compute_rattlers_atom>`
    * :doc:`rdf <compute_rdf>`
+   * :doc:`reaxff/atom (k) <compute_reaxff_atom>`
    * :doc:`reduce <compute_reduce>`
    * :doc:`reduce/chunk <compute_reduce_chunk>`
    * :doc:`reduce/region <compute_reduce>`
+   * :doc:`rheo/property/atom <compute_rheo_property_atom>`
    * :doc:`rigid/local <compute_rigid_local>`
    * :doc:`saed <compute_saed>`
+   * :doc:`slcsa/atom <compute_slcsa_atom>`
    * :doc:`slice <compute_slice>`
    * :doc:`smd/contact/radius <compute_smd_contact_radius>`
    * :doc:`smd/damage <compute_smd_damage>`
@@ -135,6 +141,8 @@ KOKKOS, o = OPENMP, t = OPT.
    * :doc:`smd/vol <compute_smd_vol>`
    * :doc:`snap <compute_sna_atom>`
    * :doc:`sna/atom <compute_sna_atom>`
+   * :doc:`sna/grid (k) <compute_sna_atom>`
+   * :doc:`sna/grid/local (k) <compute_sna_atom>`
    * :doc:`snad/atom <compute_sna_atom>`
    * :doc:`snav/atom <compute_sna_atom>`
    * :doc:`sph/e/atom <compute_sph_e_atom>`
@@ -142,8 +150,11 @@ KOKKOS, o = OPENMP, t = OPT.
    * :doc:`sph/t/atom <compute_sph_t_atom>`
    * :doc:`spin <compute_spin>`
    * :doc:`stress/atom <compute_stress_atom>`
+   * :doc:`stress/cartesian <compute_stress_cartesian>`
+   * :doc:`stress/cylinder <compute_stress_curvilinear>`
    * :doc:`stress/mop <compute_stress_mop>`
    * :doc:`stress/mop/profile <compute_stress_mop>`
+   * :doc:`stress/spherical <compute_stress_curvilinear>`
    * :doc:`stress/tally <compute_tally>`
    * :doc:`tdpd/cc/atom <compute_tdpd_cc_atom>`
    * :doc:`temp (k) <compute_temp>`
@@ -167,6 +178,7 @@ KOKKOS, o = OPENMP, t = OPT.
    * :doc:`ti <compute_ti>`
    * :doc:`torque/chunk <compute_torque_chunk>`
    * :doc:`vacf <compute_vacf>`
+   * :doc:`vacf/chunk <compute_vacf_chunk>`
    * :doc:`vcm/chunk <compute_vcm_chunk>`
    * :doc:`viscosity/cos <compute_viscosity_cos>`
    * :doc:`voronoi/atom <compute_voronoi_atom>`

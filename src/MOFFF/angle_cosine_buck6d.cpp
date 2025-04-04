@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -34,7 +34,7 @@
 using namespace LAMMPS_NS;
 using namespace MathConst;
 
-#define SMALL 0.001
+static constexpr double SMALL = 0.001;
 
 /* ---------------------------------------------------------------------- */
 
@@ -71,7 +71,7 @@ void AngleCosineBuck6d::compute(int eflag, int vflag)
   eangle = 0.0;
   ev_init(eflag,vflag);
 
-  // insure pair->ev_tally() will use 1-3 virial contribution
+  // ensure pair->ev_tally() will use 1-3 virial contribution
 
   if (vflag_global == VIRIAL_FDOTR)
     force->pair->vflag_either = force->pair->vflag_global = 1;
@@ -248,7 +248,7 @@ void AngleCosineBuck6d::allocate()
 
 void AngleCosineBuck6d::coeff(int narg, char **arg)
 {
-  if (narg != 4) error->all(FLERR,"Incorrect args for angle coefficients");
+  if (narg != 4) error->all(FLERR,"Incorrect args for angle coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi;
@@ -257,7 +257,7 @@ void AngleCosineBuck6d::coeff(int narg, char **arg)
   double c_one = utils::numeric(FLERR,arg[1],false,lmp);
   int n_one = utils::inumeric(FLERR,arg[2],false,lmp);
   int th0_one = utils::numeric(FLERR,arg[3],false,lmp);
-  if (n_one <= 0) error->all(FLERR,"Incorrect args for angle coefficients");
+  if (n_one <= 0) error->all(FLERR,"Incorrect args for angle coefficients" + utils::errorurl(21));
 
 
   int count = 0;
@@ -271,7 +271,7 @@ void AngleCosineBuck6d::coeff(int narg, char **arg)
     count++;
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for angle coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for angle coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -382,4 +382,17 @@ double AngleCosineBuck6d::single(int type, int i1, int i2, int i3)
   double tk = multiplicity[type]*acos(c)-th0[type];
 
   return k[type]*(1.0+cos(tk));
+}
+
+/* ----------------------------------------------------------------------
+   return ptr to internal members upon request
+------------------------------------------------------------------------ */
+
+void *AngleCosineBuck6d::extract(const char *str, int &dim)
+{
+  dim = 1;
+  if (strcmp(str, "k") == 0) return (void *) k;
+  if (strcmp(str, "multiplicity") == 0) return (void *) multiplicity;
+  if (strcmp(str, "th0") == 0) return (void *) th0;
+  return nullptr;
 }

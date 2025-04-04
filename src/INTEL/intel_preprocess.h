@@ -2,7 +2,7 @@
 /* -*- c++ -*- -------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -16,13 +16,18 @@
    Contributing author: W. Michael Brown (Intel)
 ------------------------------------------------------------------------- */
 
+#include "lmptype.h"
+
 #ifdef __INTEL_LLVM_COMPILER
 #define USE_OMP_SIMD
-#define __INTEL_COMPILER __INTEL_LLVM_COMPILER
 #define __INTEL_COMPILER_BUILD_DATE __INTEL_LLVM_COMPILER
+// Indicate to vectorizer that it is safe to use dword indexed gather
+#define IP_PRE_dword_index(i) ((i) & NEIGHMASK)
+#else
+#define IP_PRE_dword_index(i) i
 #endif
 
-#ifdef __INTEL_COMPILER
+#if defined(__INTEL_COMPILER) || defined(__INTEL_LLVM_COMPILER)
 #define LMP_SIMD_COMPILER
 #if (__INTEL_COMPILER_BUILD_DATE > 20160720)
 #define LMP_INTEL_USE_SIMDOFF
@@ -80,10 +85,8 @@ enum {TIME_PACK, TIME_HOST_NEIGHBOR, TIME_HOST_PAIR, TIME_OFFLOAD_NEIGHBOR,
 #define INTEL_MAX_STENCIL_CHECK 4096
 #define INTEL_P3M_MAXORDER 8
 #define INTEL_P3M_ALIGNED_MAXORDER 8
-// PRECOMPUTE VALUES IN TABLE (DOESN'T AFFECT ACCURACY)
-#define INTEL_P3M_TABLE 1
 
-#ifdef __INTEL_COMPILER
+#if defined(__INTEL_COMPILER) || defined(__INTEL_LLVM_COMPILER)
 #ifdef __AVX__
 #undef INTEL_VECTOR_WIDTH
 #define INTEL_VECTOR_WIDTH 8
@@ -128,6 +131,9 @@ enum {TIME_PACK, TIME_HOST_NEIGHBOR, TIME_HOST_PAIR, TIME_OFFLOAD_NEIGHBOR,
 #undef INTEL_VECTOR_WIDTH
 #define INTEL_VECTOR_WIDTH 1
 #define INTEL_COMPILE_WIDTH 1
+#if defined(__AVX512F__) && !defined(INTEL_VMASK)
+#define INTEL_VMASK 1
+#endif
 
 #endif
 

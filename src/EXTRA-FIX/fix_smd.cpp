@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -38,7 +38,7 @@ enum { SMD_NONE=0,
        SMD_CVEL=1<<2, SMD_CFOR=1<<3,
        SMD_AUTOX=1<<4, SMD_AUTOY=1<<5, SMD_AUTOZ=1<<6};
 
-#define SMALL 0.001
+static constexpr double SMALL = 0.001;
 
 /* ---------------------------------------------------------------------- */
 
@@ -161,7 +161,7 @@ void FixSMD::init()
   }
 
   if (utils::strmatch(update->integrate_style,"^respa")) {
-    ilevel_respa = ((Respa *) update->integrate)->nlevels-1;
+    ilevel_respa = (dynamic_cast<Respa *>(update->integrate))->nlevels-1;
     if (respa_level >= 0) ilevel_respa = MIN(respa_level,ilevel_respa);
   }
 }
@@ -173,9 +173,9 @@ void FixSMD::setup(int vflag)
   if (utils::strmatch(update->integrate_style,"^verlet"))
     post_force(vflag);
   else {
-    ((Respa *) update->integrate)->copy_flevel_f(ilevel_respa);
+    (dynamic_cast<Respa *>(update->integrate))->copy_flevel_f(ilevel_respa);
     post_force_respa(vflag,ilevel_respa,0);
-    ((Respa *) update->integrate)->copy_f_flevel(ilevel_respa);
+    (dynamic_cast<Respa *>(update->integrate))->copy_f_flevel(ilevel_respa);
   }
 }
 
@@ -194,7 +194,7 @@ void FixSMD::post_force(int vflag)
     if (utils::strmatch(update->integrate_style,"^verlet"))
       r_old += v_smd * update->dt;
     else
-      r_old += v_smd * ((Respa *) update->integrate)->step[ilevel_respa];
+      r_old += v_smd * (dynamic_cast<Respa *>(update->integrate))->step[ilevel_respa];
   }
 }
 
@@ -207,7 +207,7 @@ void FixSMD::smd_tether()
 
   double dt = update->dt;
   if (utils::strmatch(update->integrate_style,"^respa"))
-    dt = ((Respa *) update->integrate)->step[ilevel_respa];
+    dt = (dynamic_cast<Respa *>(update->integrate))->step[ilevel_respa];
 
   // fx,fy,fz = components of k * (r-r0)
 
@@ -313,7 +313,7 @@ void FixSMD::smd_couple()
 
   double dt = update->dt;
   if (utils::strmatch(update->integrate_style,"^respa"))
-    dt = ((Respa *) update->integrate)->step[ilevel_respa];
+    dt = (dynamic_cast<Respa *>(update->integrate))->step[ilevel_respa];
 
   // renormalize direction of spring
   double dx,dy,dz,r,dr;
@@ -430,7 +430,7 @@ void FixSMD::smd_couple()
 
 void FixSMD::write_restart(FILE *fp)
 {
-#define RESTART_ITEMS 5
+  static constexpr int RESTART_ITEMS = 5;
   double buf[RESTART_ITEMS], fsign;
 
   if (comm->me == 0) {
@@ -451,7 +451,7 @@ void FixSMD::write_restart(FILE *fp)
 
 void FixSMD::restart(char *buf)
 {
-  double *list = (double *)buf;
+  auto list = (double *)buf;
   r_old = list[0];
   xn=list[1];
   yn=list[2];

@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -26,23 +26,18 @@
 #include "comm.h"
 #include "error.h"
 #include "force.h"
+#include "info.h"
 #include "math_extra.h"
 #include "memory.h"
 #include "neigh_list.h"
-#include "neigh_request.h"
 #include "neighbor.h"
 #include "potential_file_reader.h"
 #include "tabular_function.h"
-#include "tokenizer.h"
 
 #include <cmath>
 
 using namespace LAMMPS_NS;
 using namespace MathExtra;
-
-#define MAXLINE 1024
-#define DELTA 4
-
 
 /* ---------------------------------------------------------------------- */
 
@@ -526,9 +521,7 @@ void PairPolymorphic::init_style()
 
   // need a full neighbor list
 
-  int irequest = neighbor->request(this);
-  neighbor->requests[irequest]->half = 0;
-  neighbor->requests[irequest]->full = 1;
+  neighbor->add_request(this, NeighConst::REQ_FULL);
 }
 
 /* ----------------------------------------------------------------------
@@ -537,7 +530,9 @@ void PairPolymorphic::init_style()
 
 double PairPolymorphic::init_one(int i, int j)
 {
-  if (setflag[i][j] == 0) error->all(FLERR,"All pair coeffs are not set");
+  if (setflag[i][j] == 0)
+    error->all(FLERR, Error::NOLASTLINE,
+               "All pair coeffs are not set. Status\n" + Info::get_pair_coeff_status(lmp));
 
   return cutmax;
 }
@@ -558,7 +553,8 @@ void PairPolymorphic::read_file(char *file)
       int ntypes = values.next_int();
 
       if (ntypes != nelements)
-        error->one(FLERR,"Incorrect number of elements in potential file");
+        error->one(FLERR,"Incorrect number of elements (expected: {} found: {}) in potential file",
+                   nelements, ntypes);
 
       eta = values.next_int();
 
@@ -576,7 +572,7 @@ void PairPolymorphic::read_file(char *file)
         for (j = 0; j < nelements; j++) {
           if (name == elements[j]) break;
         }
-        if (j == nelements) error->one(FLERR,"Element not defined in potential file");
+        if (j == nelements) error->one(FLERR, "Element {} in potential file not used", name);
         match[i] = j;
       }
 
@@ -639,7 +635,7 @@ void PairPolymorphic::read_file(char *file)
   MPI_Bcast(pairParameters, npair*sizeof(PairParameters), MPI_BYTE, 0, world);
 
   // start reading tabular functions
-  double * singletable = new double[nr];
+  auto  singletable = new double[nr];
   for (int i = 0; i < npair; i++) { // U
     PairParameters &p = pairParameters[i];
     if (comm->me == 0) reader->next_dvector(singletable, nr);

@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -20,22 +20,24 @@
 
 #include "pair_buck6d_coul_gauss_long.h"
 
-#include <cmath>
-#include <cstring>
 #include "atom.h"
 #include "comm.h"
-#include "force.h"
-#include "kspace.h"
-#include "neighbor.h"
-#include "neigh_list.h"
-#include "memory.h"
 #include "error.h"
+#include "force.h"
+#include "info.h"
+#include "kspace.h"
+#include "memory.h"
+#include "neigh_list.h"
+#include "neighbor.h"
 
 #include "math_special.h"
 
+#include <cmath>
+#include <cstring>
+
 using namespace LAMMPS_NS;
 
-#define EWALD_F   1.12837917
+static constexpr double EWALD_F = 1.12837917;
 
 /* ---------------------------------------------------------------------- */
 
@@ -288,7 +290,7 @@ void PairBuck6dCoulGaussLong::settings(int narg, char **arg)
 void PairBuck6dCoulGaussLong::coeff(int narg, char **arg)
 {
   if (narg < 7 || narg > 8)
-    error->all(FLERR,"Incorrect args for pair coefficients");
+    error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -318,7 +320,7 @@ void PairBuck6dCoulGaussLong::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -330,13 +332,13 @@ void PairBuck6dCoulGaussLong::init_style()
   if (!atom->q_flag)
     error->all(FLERR,"Pair style buck6d/coul/dsf requires atom attribute q");
 
-  // insure use of KSpace long-range solver, set g_ewald
+  // ensure use of KSpace long-range solver, set g_ewald
 
   if (force->kspace == nullptr)
     error->all(FLERR,"Pair style requires a KSpace style");
   g_ewald = force->kspace->g_ewald;
 
-  neighbor->request(this,instance_me);
+  neighbor->add_request(this);
 
   cut_coulsq = cut_coul * cut_coul;
 
@@ -364,7 +366,9 @@ void PairBuck6dCoulGaussLong::init_style()
 
 double PairBuck6dCoulGaussLong::init_one(int i, int j)
 {
-  if (setflag[i][j] == 0) error->all(FLERR,"All pair coeffs are not set");
+  if (setflag[i][j] == 0)
+    error->all(FLERR, Error::NOLASTLINE,
+               "All pair coeffs are not set. Status\n" + Info::get_pair_coeff_status(lmp));
 
   double cut = MAX(cut_lj[i][j],cut_coul);
   cut_ljsq[i][j] = cut_lj[i][j] * cut_lj[i][j];

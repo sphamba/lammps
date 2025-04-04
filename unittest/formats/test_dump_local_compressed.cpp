@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS Development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -38,15 +38,15 @@ public:
 
 TEST_F(DumpLocalCompressTest, compressed_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name         = "run*.melt.local";
-    auto base_name_0       = "run0.melt.local";
-    auto text_files        = text_dump_filename(base_name);
-    auto compressed_files  = compressed_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto fields            = "index c_comp[1]";
+    const auto *base_name   = "run*.melt.local";
+    const auto *base_name_0 = "run0.melt.local";
+    auto text_files         = text_dump_filename(base_name);
+    auto compressed_files   = compressed_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    const auto *fields      = "index c_comp[1]";
 
     if (compression_style == "local/zstd") {
         generate_text_and_compressed_dump(text_files, compressed_files, fields, fields, "",
@@ -71,15 +71,15 @@ TEST_F(DumpLocalCompressTest, compressed_run0)
 
 TEST_F(DumpLocalCompressTest, compressed_no_buffer_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name         = "no_buffer_run*.melt.local";
-    auto base_name_0       = "no_buffer_run0.melt.local";
-    auto text_files        = text_dump_filename(base_name);
-    auto compressed_files  = compressed_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto fields            = "index c_comp[1]";
+    const auto *base_name   = "no_buffer_run*.melt.local";
+    const auto *base_name_0 = "no_buffer_run0.melt.local";
+    auto text_files         = text_dump_filename(base_name);
+    auto compressed_files   = compressed_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    const auto *fields      = "index c_comp[1]";
 
     if (compression_style == "local/zstd") {
         generate_text_and_compressed_dump(text_files, compressed_files, fields, fields, "buffer no",
@@ -104,15 +104,15 @@ TEST_F(DumpLocalCompressTest, compressed_no_buffer_run0)
 
 TEST_F(DumpLocalCompressTest, compressed_with_time_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name         = "with_time_run*.melt.local";
-    auto base_name_0       = "with_time_run0.melt.local";
-    auto text_files        = text_dump_filename(base_name);
-    auto compressed_files  = compressed_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto fields            = "index c_comp[1]";
+    const auto *base_name   = "with_time_run*.melt.local";
+    const auto *base_name_0 = "with_time_run0.melt.local";
+    auto text_files         = text_dump_filename(base_name);
+    auto compressed_files   = compressed_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    const auto *fields      = "index c_comp[1]";
 
     if (compression_style == "local/zstd") {
         generate_text_and_compressed_dump(text_files, compressed_files, fields, fields, "time yes",
@@ -137,15 +137,15 @@ TEST_F(DumpLocalCompressTest, compressed_with_time_run0)
 
 TEST_F(DumpLocalCompressTest, compressed_with_units_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name         = "with_units_run*.melt.local";
-    auto base_name_0       = "with_units_run0.melt.local";
-    auto text_files        = text_dump_filename(base_name);
-    auto compressed_files  = compressed_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto fields            = "index c_comp[1]";
+    const auto *base_name   = "with_units_run*.melt.local";
+    const auto *base_name_0 = "with_units_run0.melt.local";
+    auto text_files         = text_dump_filename(base_name);
+    auto compressed_files   = compressed_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    const auto *fields      = "index c_comp[1]";
 
     if (compression_style == "local/zstd") {
         generate_text_and_compressed_dump(text_files, compressed_files, fields, fields, "units yes",
@@ -170,16 +170,16 @@ TEST_F(DumpLocalCompressTest, compressed_with_units_run0)
 
 TEST_F(DumpLocalCompressTest, compressed_triclinic_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
     enable_triclinic();
 
-    auto base_name         = "triclinic_run*.melt.local";
-    auto base_name_0       = "triclinic_run0.melt.local";
-    auto text_files        = text_dump_filename(base_name);
-    auto compressed_files  = compressed_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto fields            = "index c_comp[1]";
+    const auto *base_name   = "triclinic_run*.melt.local";
+    const auto *base_name_0 = "triclinic_run0.melt.local";
+    auto text_files         = text_dump_filename(base_name);
+    auto compressed_files   = compressed_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    const auto *fields      = "index c_comp[1]";
 
     if (compression_style == "local/zstd") {
         generate_text_and_compressed_dump(text_files, compressed_files, fields, fields, "",
@@ -204,18 +204,18 @@ TEST_F(DumpLocalCompressTest, compressed_triclinic_run0)
 
 TEST_F(DumpLocalCompressTest, compressed_multi_file_run1)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name         = "multi_file_run1_*.melt.local";
-    auto base_name_0       = "multi_file_run1_0.melt.local";
-    auto base_name_1       = "multi_file_run1_1.melt.local";
-    auto text_file         = text_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto text_file_1       = text_dump_filename(base_name_1);
-    auto compressed_file   = compressed_dump_filename(base_name);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto compressed_file_1 = compressed_dump_filename(base_name_1);
-    auto fields            = "index c_comp[1]";
+    const auto *base_name   = "multi_file_run1_*.melt.local";
+    const auto *base_name_0 = "multi_file_run1_0.melt.local";
+    const auto *base_name_1 = "multi_file_run1_1.melt.local";
+    auto text_file          = text_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto text_file_1        = text_dump_filename(base_name_1);
+    auto compressed_file    = compressed_dump_filename(base_name);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    auto compressed_file_1  = compressed_dump_filename(base_name_1);
+    const auto *fields      = "index c_comp[1]";
 
     if (compression_style == "local/zstd") {
         generate_text_and_compressed_dump(text_file, compressed_file, fields, fields, "",
@@ -246,18 +246,18 @@ TEST_F(DumpLocalCompressTest, compressed_multi_file_run1)
 
 TEST_F(DumpLocalCompressTest, compressed_multi_file_with_pad_run1)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name         = "multi_file_pad_run1_*.melt.local";
-    auto base_name_0       = "multi_file_pad_run1_000.melt.local";
-    auto base_name_1       = "multi_file_pad_run1_001.melt.local";
-    auto text_file         = text_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto text_file_1       = text_dump_filename(base_name_1);
-    auto compressed_file   = compressed_dump_filename(base_name);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto compressed_file_1 = compressed_dump_filename(base_name_1);
-    auto fields            = "index c_comp[1]";
+    const auto *base_name   = "multi_file_pad_run1_*.melt.local";
+    const auto *base_name_0 = "multi_file_pad_run1_000.melt.local";
+    const auto *base_name_1 = "multi_file_pad_run1_001.melt.local";
+    auto text_file          = text_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto text_file_1        = text_dump_filename(base_name_1);
+    auto compressed_file    = compressed_dump_filename(base_name);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    auto compressed_file_1  = compressed_dump_filename(base_name_1);
+    const auto *fields      = "index c_comp[1]";
 
     generate_text_and_compressed_dump(text_file, compressed_file, fields, "pad 3", 1);
 
@@ -288,21 +288,21 @@ TEST_F(DumpLocalCompressTest, compressed_multi_file_with_pad_run1)
 
 TEST_F(DumpLocalCompressTest, compressed_multi_file_with_maxfiles_run1)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name         = "multi_file_maxfiles_run1_*.melt.local";
-    auto base_name_0       = "multi_file_maxfiles_run1_0.melt.local";
-    auto base_name_1       = "multi_file_maxfiles_run1_1.melt.local";
-    auto base_name_2       = "multi_file_maxfiles_run1_2.melt.local";
-    auto text_file         = text_dump_filename(base_name);
-    auto text_file_0       = text_dump_filename(base_name_0);
-    auto text_file_1       = text_dump_filename(base_name_1);
-    auto text_file_2       = text_dump_filename(base_name_2);
-    auto compressed_file   = compressed_dump_filename(base_name);
-    auto compressed_file_0 = compressed_dump_filename(base_name_0);
-    auto compressed_file_1 = compressed_dump_filename(base_name_1);
-    auto compressed_file_2 = compressed_dump_filename(base_name_2);
-    auto fields            = "index c_comp[1]";
+    const auto *base_name   = "multi_file_maxfiles_run1_*.melt.local";
+    const auto *base_name_0 = "multi_file_maxfiles_run1_0.melt.local";
+    const auto *base_name_1 = "multi_file_maxfiles_run1_1.melt.local";
+    const auto *base_name_2 = "multi_file_maxfiles_run1_2.melt.local";
+    auto text_file          = text_dump_filename(base_name);
+    auto text_file_0        = text_dump_filename(base_name_0);
+    auto text_file_1        = text_dump_filename(base_name_1);
+    auto text_file_2        = text_dump_filename(base_name_2);
+    auto compressed_file    = compressed_dump_filename(base_name);
+    auto compressed_file_0  = compressed_dump_filename(base_name_0);
+    auto compressed_file_1  = compressed_dump_filename(base_name_1);
+    auto compressed_file_2  = compressed_dump_filename(base_name_2);
+    const auto *fields      = "index c_comp[1]";
 
     generate_text_and_compressed_dump(text_file, compressed_file, fields, "maxfiles 2", 2);
 
@@ -337,7 +337,7 @@ TEST_F(DumpLocalCompressTest, compressed_modify_bad_param)
 {
     if (compression_style != "local/gz") GTEST_SKIP();
 
-    auto fields = "index c_comp[1]";
+    const auto *fields = "index c_comp[1]";
 
     BEGIN_HIDE_OUTPUT();
     command(fmt::format("dump id1 all {} 1 {} {}", compression_style,
@@ -353,7 +353,7 @@ TEST_F(DumpLocalCompressTest, compressed_modify_multi_bad_param)
 {
     if (compression_style != "local/gz") GTEST_SKIP();
 
-    auto fields = "index c_comp[1]";
+    const auto *fields = "index c_comp[1]";
 
     BEGIN_HIDE_OUTPUT();
     command(fmt::format("dump id1 all {} 1 {} {}", compression_style,
@@ -368,12 +368,12 @@ TEST_F(DumpLocalCompressTest, compressed_modify_multi_bad_param)
 
 TEST_F(DumpLocalCompressTest, compressed_modify_clevel_run0)
 {
-    if (!COMPRESS_BINARY) GTEST_SKIP();
+    if (!COMPRESS_EXECUTABLE) GTEST_SKIP();
 
-    auto base_name       = "modify_clevel_run0.melt.local";
-    auto text_file       = text_dump_filename(base_name);
-    auto compressed_file = compressed_dump_filename(base_name);
-    auto fields          = "index c_comp[1]";
+    const auto *base_name = "modify_clevel_run0.melt.local";
+    auto text_file        = text_dump_filename(base_name);
+    auto compressed_file  = compressed_dump_filename(base_name);
+    const auto *fields    = "index c_comp[1]";
 
     generate_text_and_compressed_dump(text_file, compressed_file, fields, fields, "",
                                       "compression_level 3", 0);

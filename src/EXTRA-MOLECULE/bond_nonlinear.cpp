@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -28,7 +28,10 @@ using namespace LAMMPS_NS;
 
 /* ---------------------------------------------------------------------- */
 
-BondNonlinear::BondNonlinear(LAMMPS *lmp) : Bond(lmp) {}
+BondNonlinear::BondNonlinear(LAMMPS *lmp) : Bond(lmp)
+{
+  born_matrix_enable = 1;
+}
 
 /* ---------------------------------------------------------------------- */
 
@@ -120,7 +123,7 @@ void BondNonlinear::allocate()
 
 void BondNonlinear::coeff(int narg, char **arg)
 {
-  if (narg != 4) error->all(FLERR,"Incorrect args for bond coefficients");
+  if (narg != 4) error->all(FLERR,"Incorrect args for bond coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi;
@@ -139,7 +142,7 @@ void BondNonlinear::coeff(int narg, char **arg)
     count++;
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for bond coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for bond coefficients" + utils::errorurl(21));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -207,9 +210,25 @@ double BondNonlinear::single(int type, double rsq, int /*i*/, int /*j*/,
 
 /* ---------------------------------------------------------------------- */
 
+void BondNonlinear::born_matrix(int type, double rsq, int /*i*/, int /*j*/, double &du, double &du2)
+{
+  double r = sqrt(rsq);
+  double dr = r - r0[type];
+  double drsq = dr * dr;
+  double lamdasq = lamda[type] * lamda[type];
+  double denom = lamdasq - drsq;
+  double denomsq = denom * denom;
+
+  du = 2.0 * epsilon[type] * lamdasq * dr / denomsq;
+  du2 = 2.0 * epsilon[type] * lamdasq * (lamdasq + 3.0 * drsq)/ (denomsq * denom);
+}
+
+/* ---------------------------------------------------------------------- */
+
 void *BondNonlinear::extract(const char *str, int &dim)
 {
   dim = 1;
+  if (strcmp(str,"lamda")==0) return (void*) lamda;
   if (strcmp(str,"epsilon")==0) return (void*) epsilon;
   if (strcmp(str,"r0")==0) return (void*) r0;
   return nullptr;

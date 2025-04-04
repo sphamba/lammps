@@ -11,8 +11,8 @@
 #include <vector>
 #include <cstdlib>
 #include <stdlib.h>
-#include <string.h>
 
+#include "colvar.h"
 #include "colvarproxy.h"
 #include "colvardeps.h"
 #include "colvarscript.h"
@@ -35,6 +35,10 @@
                                        objc, N_ARGS_MIN, N_ARGS_MAX) != \
         COLVARSCRIPT_OK) {                                              \
       return COLVARSCRIPT_ERROR;                                        \
+    }                                                                   \
+    if (objc > 1) {                                                     \
+      /* Silence unused parameter warning */                            \
+      (void) objv[0];                                                    \
     }                                                                   \
     colvar *this_colvar = colvar_obj(pobj);                             \
     FN_BODY;                                                            \

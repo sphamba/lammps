@@ -80,23 +80,30 @@ it provides, follow these general steps.  Details vary from package to
 package and are explained in the individual accelerator doc pages,
 listed above:
 
-+--------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------+
-| build the accelerator library                                                                                                  | only for GPU package                                                 |
-+--------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------+
-| install the accelerator package                                                                                                | make yes-opt, make yes-intel, etc                                    |
-+--------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------+
-| add compile/link flags to Makefile.machine in src/MAKE                                                                         | only for INTEL, KOKKOS, OPENMP, OPT packages                         |
-+--------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------+
-| re-build LAMMPS                                                                                                                | make machine                                                         |
-+--------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------+
-| prepare and test a regular LAMMPS simulation                                                                                   | lmp_machine -in in.script; mpirun -np 32 lmp_machine -in in.script   |
-+--------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------+
-| enable specific accelerator support via '-k on' :doc:`command-line switch <Run_options>`,                                      | only needed for KOKKOS package                                       |
-+--------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------+
-| set any needed options for the package via "-pk" :doc:`command-line switch <Run_options>` or :doc:`package <package>` command, | only if defaults need to be changed                                  |
-+--------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------+
-| use accelerated styles in your input via "-sf" :doc:`command-line switch <Run_options>` or :doc:`suffix <suffix>` command      | lmp_machine -in in.script -sf gpu                                    |
-+--------------------------------------------------------------------------------------------------------------------------------+----------------------------------------------------------------------+
++-----------------------------------------------------------+---------------------------------------------+
+| build the accelerator library                             | only for GPU package                        |
++-----------------------------------------------------------+---------------------------------------------+
+| install the accelerator package                           | ``make yes-opt``, ``make yes-intel``, etc   |
++-----------------------------------------------------------+---------------------------------------------+
+| add compile/link flags to ``Makefile.machine``            | only for INTEL, KOKKOS, OPENMP,             |
+| in ``src/MAKE``                                           | OPT packages                                |
++-----------------------------------------------------------+---------------------------------------------+
+| re-build LAMMPS                                           | ``make machine``                            |
++-----------------------------------------------------------+---------------------------------------------+
+| prepare and test a regular LAMMPS simulation              | ``lmp_machine -in in.script;``              |
+|                                                           | ``mpirun -np 32 lmp_machine -in in.script`` |
++-----------------------------------------------------------+---------------------------------------------+
+| enable specific accelerator support via ``-k on``         | only needed for KOKKOS package              |
+| :doc:`command-line switch <Run_options>`                  |                                             |
++-----------------------------------------------------------+---------------------------------------------+
+| set any needed options for the package via ``-pk``        | only if defaults need to be changed         |
+| :doc:`command-line switch <Run_options>` or               |                                             |
+| :doc:`package <package>` command                          |                                             |
++-----------------------------------------------------------+---------------------------------------------+
+| use accelerated styles in your input via ``-sf``          | ``lmp_machine -in in.script -sf gpu``       |
+| :doc:`command-line switch <Run_options>` or               |                                             |
+| :doc:`suffix <suffix>` command                            |                                             |
++-----------------------------------------------------------+---------------------------------------------+
 
 Note that the first 4 steps can be done as a single command with
 suitable make command invocations. This is discussed on the
@@ -117,32 +124,14 @@ script.
    with all its accelerator packages installed.  Note however that the
    INTEL and KOKKOS packages require you to choose one of their
    hardware options when building for a specific platform.  I.e. CPU or
-   Phi option for the INTEL package.  Or the OpenMP, Cuda, or Phi
-   option for the KOKKOS package.
+   Phi option for the INTEL package.  Or the OpenMP, CUDA, HIP, SYCL,
+   or Phi option for the KOKKOS package.  Or the OpenCL, HIP, or CUDA
+   option for the GPU package.
 
 These are the exceptions.  You cannot build a single executable with:
 
 * both the INTEL Phi and KOKKOS Phi options
 * the INTEL Phi or Kokkos Phi option, and the GPU package
-
-See the examples/accelerate/README and make.list files for sample
-Make.py commands that build LAMMPS with any or all of the accelerator
-packages.  As an example, here is a command that builds with all the
-GPU related packages installed (GPU, KOKKOS with Cuda), including
-settings to build the needed auxiliary GPU libraries for Kepler GPUs:
-
-.. code-block:: bash
-
-   Make.py -j 16 -p omp gpu kokkos -cc nvcc wrap=mpi   -gpu mode=double arch=35 -kokkos cuda arch=35 lib-all file mpi
-
-The examples/accelerate directory also has input scripts that can be
-used with all of the accelerator packages.  See its README file for
-details.
-
-Likewise, the bench directory has FERMI and KEPLER and PHI
-sub-directories with Make.py commands and input scripts for using all
-the accelerator packages on various machines.  See the README files in
-those directories.
 
 As mentioned above, the `Benchmark page <https://www.lammps.org/bench.html>`_ of the LAMMPS website gives
 performance results for the various accelerator packages for several

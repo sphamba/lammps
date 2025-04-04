@@ -52,12 +52,11 @@ int TersoffMT::init(const int ntypes, const int nlocal, const int nall, const in
                    const double* c5, const double* h, const double* beta, const double* powern,
                    const double* powern_del, const double* ca1, const double* host_cutsq)
 {
-  int oldparam=-1;
   int onetype=-1;
   int onetype3=0;
-  int spq=1;
-  int mtypes=0;
   #ifdef USE_OPENCL
+  int oldparam=-1;
+  int mtypes=0;
   for (int ii=1; ii<ntypes; ii++) {
     const int i=host_map[ii];
     for (int jj=1; jj<ntypes; jj++) {
@@ -253,7 +252,7 @@ int TersoffMT::loop(const int eflag, const int vflag, const int evatom,
 
   // re-allocate zetaij if necessary
   int nall = this->_nall;
-  if (nall*this->nbor->max_nbors() > _zetaij.cols()) {
+  if (nall*this->nbor->max_nbors() > (int)_zetaij.cols()) {
     int _nmax=static_cast<int>(static_cast<double>(nall)*1.10);
     _zetaij.clear();
     success = success && (_zetaij.alloc(this->nbor->max_nbors()*_nmax,

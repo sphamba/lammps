@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS Development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -27,10 +27,12 @@
 #include <vector>
 
 using LAMMPS_NS::utils::split_words;
+using LAMMPS_NS::utils::trim;
 
-TestConfigReader::TestConfigReader(TestConfig &config) : YamlReader(), config(config)
+TestConfigReader::TestConfigReader(TestConfig &config) : config(config)
 {
     consumers["lammps_version"] = &TestConfigReader::lammps_version;
+    consumers["tags"]           = &TestConfigReader::tags;
     consumers["date_generated"] = &TestConfigReader::date_generated;
     consumers["epsilon"]        = &TestConfigReader::epsilon;
     consumers["skip_tests"]     = &TestConfigReader::skip_tests;
@@ -46,6 +48,7 @@ TestConfigReader::TestConfigReader(TestConfig &config) : YamlReader(), config(co
     consumers["run_forces"]     = &TestConfigReader::run_forces;
     consumers["run_pos"]        = &TestConfigReader::run_pos;
     consumers["run_vel"]        = &TestConfigReader::run_vel;
+    consumers["run_torque"]     = &TestConfigReader::run_torque;
 
     consumers["pair_style"] = &TestConfigReader::pair_style;
     consumers["pair_coeff"] = &TestConfigReader::pair_coeff;
@@ -83,7 +86,7 @@ void TestConfigReader::prerequisites(const yaml_event_t &event)
     std::stringstream data((char *)event.data.scalar.value);
     std::string key, value;
 
-    while (1) {
+    while (true) {
         data >> key >> value;
         if (data.eof()) break;
         config.prerequisites.emplace_back(key, value);
@@ -138,7 +141,7 @@ void TestConfigReader::extract(const yaml_event_t &event)
     std::stringstream data((char *)event.data.scalar.value);
     std::string name;
     int value;
-    while (1) {
+    while (true) {
         data >> name >> value;
         if (data.eof()) break;
         config.extract.emplace_back(name, value);
@@ -223,6 +226,21 @@ void TestConfigReader::run_vel(const yaml_event_t &event)
         coord_t xyz;
         sscanf(line.c_str(), "%d %lg %lg %lg", &tag, &xyz.x, &xyz.y, &xyz.z);
         config.run_vel[tag] = xyz;
+    }
+}
+
+void TestConfigReader::run_torque(const yaml_event_t &event)
+{
+    config.run_torque.clear();
+    config.run_torque.resize(config.natoms + 1);
+    std::stringstream data((char *)event.data.scalar.value);
+    std::string line;
+
+    while (std::getline(data, line, '\n')) {
+        int tag;
+        coord_t xyz;
+        sscanf(line.c_str(), "%d %lg %lg %lg", &tag, &xyz.x, &xyz.y, &xyz.z);
+        config.run_torque[tag] = xyz;
     }
 }
 
@@ -365,5 +383,14 @@ void TestConfigReader::global_vector(const yaml_event_t &event)
     for (std::size_t i = 0; i < num; ++i) {
         data >> value;
         config.global_vector.push_back(value);
+    }
+}
+
+void TestConfigReader::tags(const yaml_event_t &event)
+{
+    std::stringstream data((char *)event.data.scalar.value);
+    config.tags.clear();
+    for (std::string tag; std::getline(data, tag, ',');) {
+        config.tags.push_back(trim(tag));
     }
 }

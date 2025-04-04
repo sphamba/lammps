@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -37,12 +37,13 @@ class BondHarmonicKokkos : public BondHarmonic {
  public:
   typedef DeviceType device_type;
   typedef EV_FLOAT value_type;
+  typedef ArrayTypes<DeviceType> AT;
 
   BondHarmonicKokkos(class LAMMPS *);
-  virtual ~BondHarmonicKokkos();
-  void compute(int, int);
-  void coeff(int, char **);
-  void read_restart(FILE *);
+  ~BondHarmonicKokkos() override;
+  void compute(int, int) override;
+  void coeff(int, char **) override;
+  void read_restart(FILE *) override;
 
   template<int NEWTON_BOND, int EVFLAG>
   KOKKOS_INLINE_FUNCTION
@@ -62,7 +63,6 @@ class BondHarmonicKokkos : public BondHarmonic {
 
   class NeighborKokkos *neighborKK;
 
-  typedef ArrayTypes<DeviceType> AT;
   typename AT::t_x_array_randomread x;
   typename Kokkos::View<double*[3],typename AT::t_f_array::array_layout,typename KKDevice<DeviceType>::value,Kokkos::MemoryTraits<Kokkos::Atomic> > f;
   typename AT::t_int_2d bondlist;
@@ -79,7 +79,7 @@ class BondHarmonicKokkos : public BondHarmonic {
   typename AT::t_ffloat_1d d_k;
   typename AT::t_ffloat_1d d_r0;
 
-  void allocate();
+  void allocate() override;
 };
 
 }
@@ -87,6 +87,3 @@ class BondHarmonicKokkos : public BondHarmonic {
 #endif
 #endif
 
-/* ERROR/WARNING messages:
-
-*/

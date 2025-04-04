@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -26,8 +26,8 @@
 
 using namespace LAMMPS_NS;
 
-#define SMALL 1.0e-6
-#define CUT2BIN_RATIO 100
+static constexpr double SMALL = 1.0e-6;
+static constexpr double CUT2BIN_RATIO = 100.0;
 
 /* ---------------------------------------------------------------------- */
 
@@ -205,7 +205,7 @@ void NBinMulti::setup_bins(int /*style*/)
 
     if (bbox[0]*binsizeinv > MAXSMALLINT || bbox[1]*binsizeinv > MAXSMALLINT ||
             bbox[2]*binsizeinv > MAXSMALLINT)
-      error->all(FLERR,"Domain too large for neighbor bins");
+      error->all(FLERR,"Domain too large for neighbor bins" + utils::errorurl(17));
 
     // create actual bins
     // always have one bin even if cutoff > bbox
@@ -236,9 +236,9 @@ void NBinMulti::setup_bins(int /*style*/)
 
     if (binsize_optimal*bininvx_multi[n] > CUT2BIN_RATIO ||
             binsize_optimal*bininvy_multi[n] > CUT2BIN_RATIO)
-      error->all(FLERR,"Cannot use neighbor bins - box size << cutoff");
+      error->all(FLERR,"Cannot use neighbor bins - box size << cutoff" + utils::errorurl(15));
     if ((dimension == 3) && (binsize_optimal*bininvz_multi[n] > CUT2BIN_RATIO))
-      error->all(FLERR,"Cannot use neighbor bins - box size << cutoff");
+      error->all(FLERR,"Cannot use neighbor bins - box size << cutoff" + utils::errorurl(15));
 
     // mbinlo/hi = lowest and highest global bins my ghost atoms could be in
     // coord = lowest and highest values of coords for my ghost atoms
@@ -265,7 +265,7 @@ void NBinMulti::setup_bins(int /*style*/)
       mbinzhi = static_cast<int> ((coord-bboxlo[2])*bininvz_multi[n]);
     }
 
-    // extend bins by 1 to insure stencil extent is included
+    // extend bins by 1 to ensure stencil extent is included
     // for 2d, only 1 bin in z
 
     mbinxlo_multi[n] = mbinxlo_multi[n] - 1;
@@ -284,7 +284,7 @@ void NBinMulti::setup_bins(int /*style*/)
 
     bigint bbin = ((bigint) mbinx_multi[n])
       * ((bigint) mbiny_multi[n]) * ((bigint) mbinz_multi[n]) + 1;
-    if (bbin > MAXSMALLINT) error->one(FLERR,"Too many neighbor bins");
+    if (bbin > MAXSMALLINT) error->one(FLERR,"Too many neighbor bins" + utils::errorurl(9));
     mbins_multi[n] = bbin;
   }
 

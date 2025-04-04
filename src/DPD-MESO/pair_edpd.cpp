@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -13,8 +13,8 @@
 ------------------------------------------------------------------------- */
 
 /* ----------------------------------------------------------------------
-   Contributing author: Zhen Li (Brown University)
-   Email: zhen_li@brown.edu
+   Contributing author: Zhen Li (Clemson University)
+   Email: zli7@clemson.edu
 ------------------------------------------------------------------------- */
 
 #include "pair_edpd.h"
@@ -24,6 +24,7 @@
 #include "comm.h"
 #include "error.h"
 #include "force.h"
+#include "info.h"
 #include "memory.h"
 #include "neigh_list.h"
 #include "neighbor.h"
@@ -38,21 +39,21 @@ using namespace LAMMPS_NS;
 #define MIN(A,B) ((A) < (B) ? (A) : (B))
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
 
-#define EPSILON 1.0e-10
+static constexpr double EPSILON = 1.0e-10;
 
 static const char cite_pair_edpd[] =
-  "pair edpd command:\n\n"
+  "pair edpd command: doi:10.1016/j.jcp.2014.02.003\n\n"
   "@Article{ZLi2014_JCP,\n"
-  " author = {Li, Z. and Tang, Y.-H. and Lei, H. and Caswell, B. and Karniadakis, G.E.},\n"
-  " title = {Energy-conserving dissipative particle dynamics with temperature-dependent properties},\n"
+  " author = {Li, Z. and Tang, Y.-H. and Lei, H. and Caswell, B. and Karniadakis, G. E.},\n"
+  " title = {Energy-Conserving Dissipative Particle Dynamics with Temperature-Dependent Properties},\n"
   " journal = {Journal of Computational Physics},\n"
   " year =    {2014},\n"
   " volume =  {265},\n"
   " pages =   {113--127}\n"
   "}\n\n"
   "@Article{ZLi2015_CC,\n"
-  " author = {Li, Z. and Tang, Y.-H. and Li, X. and Karniadakis, G.E.},\n"
-  " title = {Mesoscale modeling of phase transition dynamics of thermoresponsive polymers},\n"
+  " author = {Li, Z. and Tang, Y.-H. and Li, X. and Karniadakis, G. E.},\n"
+  " title = {Mesoscale Modeling of Phase Transition Dynamics of Thermoresponsive Polymers},\n"
   " journal = {Chemical Communications},\n"
   " year =    {2015},\n"
   " volume =  {51},\n"
@@ -300,7 +301,7 @@ void PairEDPD::settings(int narg, char **arg)
 void PairEDPD::coeff(int narg, char **arg)
 {
   if (narg < 9)
-    error->all(FLERR,"Incorrect args for pair edpd coefficients");
+    error->all(FLERR,"Incorrect args for pair edpd coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -321,20 +322,20 @@ void PairEDPD::coeff(int narg, char **arg)
   int n = atom->ntypes;
   while (iarg < narg) {
     if (strcmp(arg[iarg],"power") == 0) {
-      if (iarg+5 > narg) error->all(FLERR,"Illegal pair edpd coefficients");
+      if (iarg+5 > narg) error->all(FLERR,"Illegal pair edpd coefficients" + utils::errorurl(21));
       for (int i = 0; i < 4; i++)
         sc_one[i] = utils::numeric(FLERR,arg[iarg+i+1],false,lmp);
       iarg += 5;
       power_flag = 1;
       memory->create(sc,n+1,n+1,4,"pair:sc");
     } else if (strcmp(arg[iarg],"kappa") == 0) {
-      if (iarg+5 > narg) error->all(FLERR,"Illegal pair edpd coefficients");
+      if (iarg+5 > narg) error->all(FLERR,"Illegal pair edpd coefficients" + utils::errorurl(21));
       for (int i = 0; i < 4; i++)
         kc_one[i] = utils::numeric(FLERR,arg[iarg+i+1],false,lmp);
       iarg += 5;
       kappa_flag = 1;
       memory->create(kc,n+1,n+1,4,"pair:kc");
-    } else error->all(FLERR,"Illegal pair edpd coefficients");
+    } else error->all(FLERR,"Illegal pair edpd coefficients" + utils::errorurl(21));
   }
 
   int count = 0;
@@ -360,7 +361,7 @@ void PairEDPD::coeff(int narg, char **arg)
     count++;
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------
@@ -375,10 +376,10 @@ void PairEDPD::init_style()
   // if newton off, forces between atoms ij will be double computed
   // using different random numbers
 
-  if (force->newton_pair == 0 && comm->me == 0) error->warning(FLERR,
-      "Pair tdpd needs newton pair on for momentum conservation");
+  if (force->newton_pair == 0 && comm->me == 0)
+    error->warning(FLERR, "Pair tdpd needs newton pair on for momentum conservation");
 
-  neighbor->request(this,instance_me);
+  neighbor->add_request(this);
 }
 
 /* ----------------------------------------------------------------------
@@ -387,7 +388,9 @@ void PairEDPD::init_style()
 
 double PairEDPD::init_one(int i, int j)
 {
-  if (setflag[i][j] == 0) error->all(FLERR,"All pair coeffs are not set");
+  if (setflag[i][j] == 0)
+    error->all(FLERR, Error::NOLASTLINE,
+               "All pair coeffs are not set. Status:\n" + Info::get_pair_coeff_status(lmp));
 
   cut[j][i]   = cut[i][j];
   cutT[j][i]  = cutT[i][j];

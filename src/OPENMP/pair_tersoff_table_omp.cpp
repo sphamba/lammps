@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    This software is distributed under the GNU General Public License.
 
@@ -26,15 +26,15 @@
 #include "omp_compat.h"
 using namespace LAMMPS_NS;
 
-#define GRIDSTART 0.1
-#define GRIDDENSITY_FCUTOFF 5000
-#define GRIDDENSITY_EXP 12000
-#define GRIDDENSITY_GTETA 12000
-#define GRIDDENSITY_BIJ 7500
+static constexpr double GRIDSTART = 0.1;
+static constexpr int GRIDDENSITY_FCUTOFF = 5000;
+static constexpr int GRIDDENSITY_EXP = 12000;
+static constexpr int GRIDDENSITY_GTETA = 12000;
+static constexpr int GRIDDENSITY_BIJ = 7500;
 
 // max number of interaction per atom for environment potential
 
-#define leadingDimensionInteractionList 64
+static constexpr int leadingDimensionInteractionList = 64;
 
 /* ---------------------------------------------------------------------- */
 
@@ -112,8 +112,8 @@ void PairTersoffTableOMP::eval(int iifrom, int iito, ThrData * const thr)
 
   double evdwl = 0.0;
 
-  const dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
-  dbl3_t * _noalias const f = (dbl3_t *) thr->get_f()[0];
+  const auto * _noalias const x = (dbl3_t *) atom->x[0];
+  auto * _noalias const f = (dbl3_t *) thr->get_f()[0];
   const int * _noalias const type = atom->type;
   const int nlocal = atom->nlocal;
   const int tid = thr->get_tid();

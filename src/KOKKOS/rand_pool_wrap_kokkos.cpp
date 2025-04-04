@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -39,7 +39,7 @@ RandPoolWrap::~RandPoolWrap()
 void RandPoolWrap::destroy()
 {
   if (random_thr) {
-    for (int i=1; i < nthreads; ++i)
+    for (int i = 1; i < nthreads; ++i)
       delete random_thr[i];
 
     delete[] random_thr;
@@ -51,7 +51,7 @@ void RandPoolWrap::init(RanMars* random, int seed)
 {
   // deallocate pool of RNGs
   if (random_thr) {
-    for (int i=1; i < this->nthreads; ++i)
+    for (int i = 1; i < nthreads; ++i)
       delete random_thr[i];
 
     delete[] random_thr;

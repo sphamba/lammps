@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -18,14 +18,15 @@
 #include "pair_oxdna_hbond.h"
 
 #include "atom.h"
-#include "atom_vec_ellipsoid.h"
 #include "comm.h"
+#include "constants_oxdna.h"
 #include "error.h"
 #include "force.h"
 #include "math_extra.h"
 #include "memory.h"
 #include "mf_oxdna.h"
 #include "neigh_list.h"
+#include "potential_file_reader.h"
 
 #include <cmath>
 #include <cstring>
@@ -39,6 +40,7 @@ PairOxdnaHbond::PairOxdnaHbond(LAMMPS *lmp) : Pair(lmp)
 {
   single_enable = 0;
   writedata = 1;
+  trim_flag = 0;
 
   // sequence-specific base-pairing strength
   // A:0 C:1 G:2 T:3, 5'- [i][j] -3'
@@ -135,7 +137,7 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
 {
 
   double delf[3],delta[3],deltb[3]; // force, torque increment;
-  double evdwl,fpair,finc,tpair,factor_lj;
+  double evdwl,finc,tpair,factor_lj;
   double delr_hb[3],delr_hb_norm[3],rsq_hb,r_hb,rinv_hb;
   double theta1,t1dir[3],cost1;
   double theta2,t2dir[3],cost2;
@@ -145,13 +147,12 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
   double theta8,t8dir[3],cost8;
 
   // distance COM-hbonding site
-  double d_chb=+0.4;
+  double d_chb = ConstantsOxdna::get_d_chb();
   // vectors COM-h-bonding site in lab frame
   double ra_chb[3],rb_chb[3];
-
-  // quaternions and Cartesian unit vectors in lab frame
-  double *qa,ax[3],ay[3],az[3];
-  double *qb,bx[3],by[3],bz[3];
+  // Cartesian unit vectors in lab frame
+  double ax[3],az[3];
+  double bx[3],bz[3];
 
   double **x = atom->x;
   double **f = atom->f;
@@ -162,10 +163,6 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
   int newton_pair = force->newton_pair;
   int *alist,*blist,*numneigh,**firstneigh;
   double *special_lj = force->special_lj;
-
-  AtomVecEllipsoid *avec = (AtomVecEllipsoid *) atom->style_match("ellipsoid");
-  AtomVecEllipsoid::Bonus *bonus = avec->bonus;
-  int *ellipsoid = atom->ellipsoid;
 
   int a,b,ia,ib,anum,bnum,atype,btype;
 
@@ -180,6 +177,12 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
   numneigh = list->numneigh;
   firstneigh = list->firstneigh;
 
+  // n(x/y/z)_xtrct = extracted local unit vectors from oxdna_excv
+  int dim;
+  nx_xtrct = (double **) force->pair->extract("nx",dim);
+  ny_xtrct = (double **) force->pair->extract("ny",dim);
+  nz_xtrct = (double **) force->pair->extract("nz",dim);
+
   // loop over pair interaction neighbors of my atoms
 
   for (ia = 0; ia < anum; ia++) {
@@ -187,8 +190,9 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
     a = alist[ia];
     atype = type[a];
 
-    qa=bonus[ellipsoid[a]].quat;
-    MathExtra::q_to_exyz(qa,ax,ay,az);
+    ax[0] = nx_xtrct[a][0];
+    ax[1] = nx_xtrct[a][1];
+    ax[2] = nx_xtrct[a][2];
 
     ra_chb[0] = d_chb*ax[0];
     ra_chb[1] = d_chb*ax[1];
@@ -205,8 +209,9 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
 
       btype = type[b];
 
-      qb=bonus[ellipsoid[b]].quat;
-      MathExtra::q_to_exyz(qb,bx,by,bz);
+      bx[0] = nx_xtrct[b][0];
+      bx[1] = nx_xtrct[b][1];
+      bx[2] = nx_xtrct[b][2];
 
       rb_chb[0] = d_chb*bx[0];
       rb_chb[1] = d_chb*bx[1];
@@ -264,6 +269,13 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
 
       // early rejection criterium
       if (f4t3) {
+
+      az[0] = nz_xtrct[a][0];
+      az[1] = nz_xtrct[a][1];
+      az[2] = nz_xtrct[a][2];
+      bz[0] = nz_xtrct[b][0];
+      bz[1] = nz_xtrct[b][1];
+      bz[2] = nz_xtrct[b][2];
 
       cost4 = MathExtra::dot3(az,bz);
       if (cost4 >  1.0) cost4 =  1.0;
@@ -324,8 +336,6 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
 
       // force, torque and virial contribution for forces between h-bonding sites
 
-      fpair = 0.0;
-
       delf[0] = 0.0;
       delf[1] = 0.0;
       delf[2] = 0.0;
@@ -340,7 +350,6 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
 
       // radial force
       finc  = -df1 * f4t1 * f4t2 * f4t3 * f4t4 * f4t7 * f4t8 * factor_lj;
-      fpair += finc;
 
       delf[0] += delr_hb[0] * finc;
       delf[1] += delr_hb[1] * finc;
@@ -350,7 +359,6 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
       if (theta2) {
 
         finc  = -f1 * f4t1 * df4t2 * f4t3 * f4t4 * f4t7 * f4t8 * rinv_hb * factor_lj;
-        fpair += finc;
 
         delf[0] += (delr_hb_norm[0]*cost2 + ax[0]) * finc;
         delf[1] += (delr_hb_norm[1]*cost2 + ax[1]) * finc;
@@ -362,7 +370,6 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
       if (theta3) {
 
         finc  = -f1 * f4t1 * f4t2 * df4t3 * f4t4 * f4t7 * f4t8 * rinv_hb * factor_lj;
-        fpair += finc;
 
         delf[0] += (delr_hb_norm[0]*cost3 - bx[0]) * finc;
         delf[1] += (delr_hb_norm[1]*cost3 - bx[1]) * finc;
@@ -374,7 +381,6 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
       if (theta7) {
 
         finc  = -f1 * f4t1 * f4t2 * f4t3 * f4t4 * df4t7 * f4t8 * rinv_hb * factor_lj;
-        fpair += finc;
 
         delf[0] += (delr_hb_norm[0]*cost7 + az[0]) * finc;
         delf[1] += (delr_hb_norm[1]*cost7 + az[1]) * finc;
@@ -386,7 +392,6 @@ void PairOxdnaHbond::compute(int eflag, int vflag)
       if (theta8) {
 
         finc  = -f1 * f4t1 * f4t2 * f4t3 * f4t4 * f4t7 * df4t8 * rinv_hb * factor_lj;
-        fpair += finc;
 
         delf[0] += (delr_hb_norm[0]*cost8 - bz[0]) * finc;
         delf[1] += (delr_hb_norm[1]*cost8 - bz[1]) * finc;
@@ -631,7 +636,7 @@ void PairOxdnaHbond::coeff(int narg, char **arg)
 {
   int count;
 
-  if (narg != 27) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/hbond");
+  if (narg != 4 && narg != 27) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/hbond" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi,imod4,jmod4;
@@ -668,36 +673,125 @@ void PairOxdnaHbond::coeff(int narg, char **arg)
   if (strcmp(arg[2],"seqav")  == 0) seqdepflag = 0;
   if (strcmp(arg[2],"seqdep") == 0) seqdepflag = 1;
 
-  epsilon_hb_one = utils::numeric(FLERR,arg[3],false,lmp);
-  a_hb_one = utils::numeric(FLERR,arg[4],false,lmp);
-  cut_hb_0_one = utils::numeric(FLERR,arg[5],false,lmp);
-  cut_hb_c_one = utils::numeric(FLERR,arg[6],false,lmp);
-  cut_hb_lo_one = utils::numeric(FLERR,arg[7],false,lmp);
-  cut_hb_hi_one = utils::numeric(FLERR,arg[8],false,lmp);
+  if (narg == 27) {
+    epsilon_hb_one = utils::numeric(FLERR,arg[3],false,lmp);
+    a_hb_one = utils::numeric(FLERR,arg[4],false,lmp);
+    cut_hb_0_one = utils::numeric(FLERR,arg[5],false,lmp);
+    cut_hb_c_one = utils::numeric(FLERR,arg[6],false,lmp);
+    cut_hb_lo_one = utils::numeric(FLERR,arg[7],false,lmp);
+    cut_hb_hi_one = utils::numeric(FLERR,arg[8],false,lmp);
 
-  a_hb1_one = utils::numeric(FLERR,arg[9],false,lmp);
-  theta_hb1_0_one = utils::numeric(FLERR,arg[10],false,lmp);
-  dtheta_hb1_ast_one = utils::numeric(FLERR,arg[11],false,lmp);
+    a_hb1_one = utils::numeric(FLERR,arg[9],false,lmp);
+    theta_hb1_0_one = utils::numeric(FLERR,arg[10],false,lmp);
+    dtheta_hb1_ast_one = utils::numeric(FLERR,arg[11],false,lmp);
 
-  a_hb2_one = utils::numeric(FLERR,arg[12],false,lmp);
-  theta_hb2_0_one = utils::numeric(FLERR,arg[13],false,lmp);
-  dtheta_hb2_ast_one = utils::numeric(FLERR,arg[14],false,lmp);
+    a_hb2_one = utils::numeric(FLERR,arg[12],false,lmp);
+    theta_hb2_0_one = utils::numeric(FLERR,arg[13],false,lmp);
+    dtheta_hb2_ast_one = utils::numeric(FLERR,arg[14],false,lmp);
 
-  a_hb3_one = utils::numeric(FLERR,arg[15],false,lmp);
-  theta_hb3_0_one = utils::numeric(FLERR,arg[16],false,lmp);
-  dtheta_hb3_ast_one = utils::numeric(FLERR,arg[17],false,lmp);
+    a_hb3_one = utils::numeric(FLERR,arg[15],false,lmp);
+    theta_hb3_0_one = utils::numeric(FLERR,arg[16],false,lmp);
+    dtheta_hb3_ast_one = utils::numeric(FLERR,arg[17],false,lmp);
 
-  a_hb4_one = utils::numeric(FLERR,arg[18],false,lmp);
-  theta_hb4_0_one = utils::numeric(FLERR,arg[19],false,lmp);
-  dtheta_hb4_ast_one = utils::numeric(FLERR,arg[20],false,lmp);
+    a_hb4_one = utils::numeric(FLERR,arg[18],false,lmp);
+    theta_hb4_0_one = utils::numeric(FLERR,arg[19],false,lmp);
+    dtheta_hb4_ast_one = utils::numeric(FLERR,arg[20],false,lmp);
 
-  a_hb7_one = utils::numeric(FLERR,arg[21],false,lmp);
-  theta_hb7_0_one = utils::numeric(FLERR,arg[22],false,lmp);
-  dtheta_hb7_ast_one = utils::numeric(FLERR,arg[23],false,lmp);
+    a_hb7_one = utils::numeric(FLERR,arg[21],false,lmp);
+    theta_hb7_0_one = utils::numeric(FLERR,arg[22],false,lmp);
+    dtheta_hb7_ast_one = utils::numeric(FLERR,arg[23],false,lmp);
 
-  a_hb8_one = utils::numeric(FLERR,arg[24],false,lmp);
-  theta_hb8_0_one = utils::numeric(FLERR,arg[25],false,lmp);
-  dtheta_hb8_ast_one = utils::numeric(FLERR,arg[26],false,lmp);
+    a_hb8_one = utils::numeric(FLERR,arg[24],false,lmp);
+    theta_hb8_0_one = utils::numeric(FLERR,arg[25],false,lmp);
+    dtheta_hb8_ast_one = utils::numeric(FLERR,arg[26],false,lmp);
+  } else { // read values from potential file
+    if (comm->me == 0) {
+      PotentialFileReader reader(lmp, arg[3], "oxdna potential", " (hbond)");
+      char * line;
+      std::string iloc, jloc, potential_name;
+
+      while ((line = reader.next_line())) {
+        try {
+          ValueTokenizer values(line);
+          iloc = values.next_string();
+          jloc = values.next_string();
+          potential_name = values.next_string();
+          if (iloc == arg[0] && jloc == arg[1] && potential_name == "hbond") {
+
+            epsilon_hb_one = values.next_double();
+            a_hb_one = values.next_double();
+            cut_hb_0_one = values.next_double();
+            cut_hb_c_one = values.next_double();
+            cut_hb_lo_one = values.next_double();
+            cut_hb_hi_one = values.next_double();
+
+            a_hb1_one = values.next_double();
+            theta_hb1_0_one = values.next_double();
+            dtheta_hb1_ast_one = values.next_double();
+
+            a_hb2_one = values.next_double();
+            theta_hb2_0_one = values.next_double();
+            dtheta_hb2_ast_one = values.next_double();
+
+            a_hb3_one = values.next_double();
+            theta_hb3_0_one = values.next_double();
+            dtheta_hb3_ast_one = values.next_double();
+
+            a_hb4_one = values.next_double();
+            theta_hb4_0_one = values.next_double();
+            dtheta_hb4_ast_one = values.next_double();
+
+            a_hb7_one = values.next_double();
+            theta_hb7_0_one = values.next_double();
+            dtheta_hb7_ast_one = values.next_double();
+
+            a_hb8_one = values.next_double();
+            theta_hb8_0_one = values.next_double();
+            dtheta_hb8_ast_one = values.next_double();
+
+            break;
+          } else continue;
+        } catch (std::exception &e) {
+          error->one(FLERR, "Problem parsing oxDNA potential file: {}", e.what());
+        }
+      }
+      if ((iloc != arg[0]) || (jloc != arg[1]) || (potential_name != "hbond"))
+        error->one(FLERR, "No corresponding hbond potential found in file {} for pair type {} {}",
+                   arg[3], arg[0], arg[1]);
+    }
+
+    MPI_Bcast(&epsilon_hb_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&a_hb_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_hb_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_hb_c_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_hb_lo_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&cut_hb_hi_one, 1, MPI_DOUBLE, 0, world);
+
+    MPI_Bcast(&a_hb1_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&theta_hb1_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&dtheta_hb1_ast_one, 1, MPI_DOUBLE, 0, world);
+
+    MPI_Bcast(&a_hb2_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&theta_hb2_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&dtheta_hb2_ast_one, 1, MPI_DOUBLE, 0, world);
+
+    MPI_Bcast(&a_hb3_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&theta_hb3_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&dtheta_hb3_ast_one, 1, MPI_DOUBLE, 0, world);
+
+    MPI_Bcast(&a_hb4_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&theta_hb4_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&dtheta_hb4_ast_one, 1, MPI_DOUBLE, 0, world);
+
+    MPI_Bcast(&a_hb7_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&theta_hb7_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&dtheta_hb7_ast_one, 1, MPI_DOUBLE, 0, world);
+
+    MPI_Bcast(&a_hb8_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&theta_hb8_0_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&dtheta_hb8_ast_one, 1, MPI_DOUBLE, 0, world);
+  }
+
 
   b_hb_lo_one = 2*a_hb_one*exp(-a_hb_one*(cut_hb_lo_one-cut_hb_0_one))*
         2*a_hb_one*exp(-a_hb_one*(cut_hb_lo_one-cut_hb_0_one))*
@@ -807,7 +901,7 @@ void PairOxdnaHbond::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/hbond");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients in oxdna/hbond" + utils::errorurl(21));
 
 }
 

@@ -6,7 +6,7 @@ compute adf command
 Syntax
 """"""
 
-.. parsed-literal::
+.. code-block:: LAMMPS
 
    compute ID group-ID adf Nbin itype1 jtype1 ktype1 Rjinner1 Rjouter1 Rkinner1 Rkouter1 ...
 
@@ -16,10 +16,10 @@ Syntax
 * itypeN = central atom type for Nth ADF histogram (see asterisk form below)
 * jtypeN = J atom type for Nth ADF histogram (see asterisk form below)
 * ktypeN = K atom type for Nth ADF histogram (see asterisk form below)
-* RjinnerN =  inner radius of J atom shell for Nth ADF histogram (distance units)
-* RjouterN =  outer radius of J atom shell for Nth ADF histogram (distance units)
+* RjinnerN = inner radius of J atom shell for Nth ADF histogram (distance units)
+* RjouterN = outer radius of J atom shell for Nth ADF histogram (distance units)
 * RkinnerN = inner radius of K atom shell for Nth ADF histogram (distance units)
-* RkouterN =  outer radius of K atom shell for Nth ADF histogram (distance units)
+* RkouterN = outer radius of K atom shell for Nth ADF histogram (distance units)
 * zero or one keyword/value pairs may be appended
 * keyword = *ordinate*
 
@@ -75,7 +75,7 @@ neighbor atom in each requested ADF.
 
    If you request any outer cutoff *Router* > force cutoff, or if no
    pair style is defined,  e.g. the :doc:`rerun <rerun>` command is being used to
-   post-process a dump file of snapshots you must insure ghost atom information
+   post-process a dump file of snapshots you must ensure ghost atom information
    out to the largest value of *Router* + *skin* is communicated, via the
    :doc:`comm_modify cutoff <comm_modify>` command, else the ADF computation
    cannot be performed, and LAMMPS will give an error message.  The *skin* value
@@ -177,8 +177,8 @@ Output info
 """""""""""
 
 This compute calculates a global array with the number of rows =
-*Nbins*, and the number of columns = 1 + 2\*Ntriples, where Ntriples is the
-number of I,J,K triples specified.  The first column has the bin
+*Nbins* and the number of columns = :math:`1 + 2 \times` *Ntriples*, where *Ntriples*
+is the number of I,J,K triples specified.  The first column has the bin
 coordinate (angle-related ordinate at midpoint of bin). Each subsequent column has
 the two ADF values for a specific set of (\ *itypeN*,\ *jtypeN*,\ *ktypeN*\ )
 interactions, as described above.  These values can be used
@@ -192,10 +192,10 @@ The first column of array values is the angle-related ordinate, either
 the angle in degrees or radians, or the cosine of the angle.  Each
 subsequent pair of columns gives the first and second kinds of ADF
 for a specific set of (\ *itypeN*,\ *jtypeN*,\ *ktypeN*\ ). The values
-in the first ADF column are normalized numbers >= 0.0,
+in the first ADF column are normalized numbers :math:`\ge 0.0`,
 whose integral w.r.t. the ordinate is 1,
 i.e. the first ADF is a normalized probability distribution.
-The values in the second ADF column are also numbers >= 0.0.
+The values in the second ADF column are also numbers :math:`\ge 0.0`.
 They are the cumulative density distribution of angles per atom.
 By definition, this ADF is monotonically increasing from zero to
 a maximum value equal to the average total number of
@@ -204,8 +204,23 @@ angles per atom satisfying the ADF criteria.
 Restrictions
 """"""""""""
 
-This compute is part of the EXTRA-COMPUTE package.  It is only enabled if
-LAMMPS was built with that package.  See the :doc:`Build package <Build_package>` page for more info.
+This compute is part of the EXTRA-COMPUTE package.  It is only enabled
+if LAMMPS was built with that package.  See the :doc:`Build package
+<Build_package>` page for more info.
+
+By default, the ADF is not computed for distances longer than the
+largest force cutoff, since the neighbor list creation will only contain
+pairs up to that distance (plus neighbor list skin).  If you use outer
+cutoffs larger than that, you must use :doc:`neighbor style 'bin' or
+'nsq' <neighbor>`.
+
+If you want an ADF for a larger outer cutoff, you can also use the
+:doc:`rerun <rerun>` command to post-process a dump file, use :doc:`pair
+style zero <pair_zero>` and set the force cutoff to be larger in the
+rerun script.  Note that in the rerun context, the force cutoff is
+arbitrary and with pair style zero you are not computing any forces, and
+since you are not running dynamics you are not changing the model that
+generated the trajectory.
 
 The ADF is not computed for neighbors outside the force cutoff,
 since processors (in parallel) don't know about atom coordinates for

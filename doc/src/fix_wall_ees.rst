@@ -10,7 +10,7 @@ fix wall/region/ees command
 Syntax
 """"""
 
-.. parsed-literal::
+.. code-block:: LAMMPS
 
    fix ID group-ID style args
 
@@ -71,7 +71,7 @@ energy of wall-particle interactions E is given by:
    \sigma_{n}^5 \left(r^2-\sigma_{n}^2\right)} \right]\qquad \sigma_n
    < r < r_c
 
-Introduced by Babadi and Ejtehadi in :ref:`(Babadi)
+Introduced by Babadi and Ejtehadi in :ref:`(Babadi2)
 <BabadiEjtehadi>`. Here, *r* is the distance from the particle to the
 wall at position *coord*, and Rc is the *cutoff* distance at which
 the particle and wall no longer interact. Also, :math:`\sigma_n` is
@@ -88,7 +88,7 @@ examples/ directory.
 The prefactor :math:`\epsilon` can be thought of as an
 effective Hamaker constant with energy units for the strength of the
 ellipsoid-wall interaction.  More specifically, the :math:`\epsilon`
-pre-factor is
+prefactor is
 
 .. math::
 
@@ -104,7 +104,7 @@ respectively, in units of 1/volume.
 
 .. note::
 
-   You must insure that r is always bigger than :math:`\sigma_n` for
+   You must ensure that r is always bigger than :math:`\sigma_n` for
    all particles in the group, or LAMMPS will generate an error.  This
    means you cannot start your simulation with particles touching the wall
    position *coord* (:math:`r = \sigma_n`) or with particles penetrating
@@ -182,4 +182,4 @@ none
 
 .. _BabadiEjtehadi:
 
-**(Babadi)** Babadi and Ejtehadi, EPL, 77 (2007) 23002.
+**(Babadi2)** Babadi and Ejtehadi, EPL, 77 (2007) 23002.

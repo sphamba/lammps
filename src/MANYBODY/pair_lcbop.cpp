@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -13,30 +13,30 @@
 ------------------------------------------------------------------------- */
 
 /* ----------------------------------------------------------------------
-   Contributing author: Dominik Wójt (Wroclaw University of Technology)
+   Contributing author: Dominik Wojt (Wroclaw University of Technology)
      based on pair_airebo by Ase Henry (MIT)
 ------------------------------------------------------------------------- */
 
 #include "pair_lcbop.h"
 
 #include "atom.h"
-#include "force.h"
 #include "comm.h"
-#include "neighbor.h"
-#include "neigh_list.h"
-#include "neigh_request.h"
-#include "my_page.h"
-#include "memory.h"
 #include "error.h"
+#include "force.h"
+#include "info.h"
+#include "memory.h"
+#include "my_page.h"
+#include "neigh_list.h"
+#include "neighbor.h"
 
 #include <cmath>
 #include <cstring>
 
 using namespace LAMMPS_NS;
 
-#define MAXLINE 1024
-#define TOL 1.0e-9
-#define PGDELTA 1
+static constexpr int MAXLINE = 1024;
+static constexpr double TOL = 1.0e-9;
+static constexpr int PGDELTA = 1;
 
 /* ---------------------------------------------------------------------- */
 
@@ -116,7 +116,7 @@ void PairLCBOP::allocate()
 ------------------------------------------------------------------------- */
 
 void PairLCBOP::settings(int narg, char **/*arg*/) {
-  if (narg != 0 ) error->all(FLERR,"Illegal pair_style command");
+  if (narg != 0) error->all(FLERR,"Illegal pair_style command");
 }
 
 /* ----------------------------------------------------------------------
@@ -132,7 +132,7 @@ void PairLCBOP::coeff(int narg, char **arg)
   // only element "C" is allowed
 
   if ((nelements != 1) || (strcmp(elements[0],"C") != 0))
-      error->all(FLERR,"Incorrect args for pair coefficients");
+      error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 
   // read potential file and initialize fitting splines
 
@@ -153,10 +153,7 @@ void PairLCBOP::init_style()
 
   // need a full neighbor list, including neighbors of ghosts
 
-  int irequest = neighbor->request(this,instance_me);
-  neighbor->requests[irequest]->half = 0;
-  neighbor->requests[irequest]->full = 1;
-  neighbor->requests[irequest]->ghost = 1;
+  neighbor->add_request(this, NeighConst::REQ_FULL | NeighConst::REQ_GHOST);
 
   // local SR neighbor list
   // create pages if first time or if neighbor pgsize/oneatom has changed
@@ -184,7 +181,9 @@ void PairLCBOP::init_style()
 
 double PairLCBOP::init_one(int i, int j)
 {
-  if (setflag[i][j] == 0) error->all(FLERR,"All pair coeffs are not set");
+  if (setflag[i][j] == 0)
+    error->all(FLERR, Error::NOLASTLINE,
+               "All pair coeffs are not set. Status\n" + Info::get_pair_coeff_status(lmp));
 
   // cut3rebo = 3 SR distances
 
@@ -935,7 +934,7 @@ void PairLCBOP::read_file(char *filename)
 
     // skip initial comment lines
 
-    while (1) {
+    while (true) {
       utils::sfgets(FLERR,s,MAXLINE,fp,filename,error);
       if (s[0] != '#') break;
     }
@@ -971,7 +970,7 @@ void PairLCBOP::read_file(char *filename)
     utils::sfgets(FLERR,s,MAXLINE,fp,filename,error);    sscanf(s,"%lg",&eps);
     utils::sfgets(FLERR,s,MAXLINE,fp,filename,error);    sscanf(s,"%lg",&delta);
 
-    while (1) {
+    while (true) {
       utils::sfgets(FLERR,s,MAXLINE,fp,filename,error);
       if (s[0] != '#') break;
     }
@@ -988,7 +987,7 @@ void PairLCBOP::read_file(char *filename)
             &F_conj_data[i][2][k][l],
             &F_conj_data[i][3][k][l]);
         }
-        while (1) { utils::sfgets(FLERR,s,MAXLINE,fp,filename,error); if (s[0] != '#') break; }
+        while (true) { utils::sfgets(FLERR,s,MAXLINE,fp,filename,error); if (s[0] != '#') break; }
       }
     }
 

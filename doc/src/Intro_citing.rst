@@ -16,7 +16,7 @@ source code design, the program structure, the spatial decomposition
 approach, the neighbor finding, basic communications algorithms, and how
 users and developers have contributed to LAMMPS is:
 
-  `LAMMPS - A flexible simulation tool for particle-based materials modeling at the atomic, meso, and continuum scales, Comp. Phys. Comm. (accepted 09/2021), DOI:10.1016/j.cpc.2021.108171 <https://doi.org/10.1016/j.cpc.2021.108171>`_
+  `LAMMPS - A flexible simulation tool for particle-based materials modeling at the atomic, meso, and continuum scales, Comp. Phys. Comm. 271, 108171 (2022) <https://doi.org/10.1016/j.cpc.2021.108171>`_
 
 So a project using LAMMPS or a derivative application that uses LAMMPS
 as a simulation engine should cite this paper.  The paper is expected to
@@ -27,26 +27,28 @@ namely https://www.lammps.org.
 The original publication describing the parallel algorithms used in the
 initial versions of LAMMPS is:
 
-  `S. Plimpton, Fast Parallel Algorithms for Short-Range Molecular Dynamics, J Comp Phys, 117, 1-19 (1995). <http://www.sandia.gov/~sjplimp/papers/jcompphys95.pdf>`_
+  `S. Plimpton, Fast Parallel Algorithms for Short-Range Molecular Dynamics, J Comp Phys, 117, 1-19 (1995). <https://doi.org/10.1006/jcph.1995.1039>`_
 
 
-DOI for the LAMMPS code
-^^^^^^^^^^^^^^^^^^^^^^^
+DOI for the LAMMPS source code
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-LAMMPS developers use the `Zenodo service at CERN <https://zenodo.org/>`_
-to create digital object identifies (DOI) for stable releases of the
-LAMMPS source code. There are two types of DOIs for the LAMMPS source code.
+The LAMMPS developers use the `Zenodo service at CERN <https://zenodo.org/>`_
+to create digital object identifiers (DOI) for stable releases of the
+LAMMPS source code.  There are two types of DOIs for the LAMMPS source code.
 
 The canonical DOI for **all** versions of LAMMPS, which will always
-point to the **latest** stable release version is:
+point to the **latest** stable release version, is:
 
 - DOI: `10.5281/zenodo.3726416 <https://dx.doi.org/10.5281/zenodo.3726416>`_
 
-In addition there are DOIs for individual stable releases. Currently there are:
+In addition there are DOIs generated for individual stable releases:
 
 - 3 March 2020 version: `DOI:10.5281/zenodo.3726417 <https://dx.doi.org/10.5281/zenodo.3726417>`_
 - 29 October 2020 version: `DOI:10.5281/zenodo.4157471 <https://dx.doi.org/10.5281/zenodo.4157471>`_
-
+- 29 September 2021 version: `DOI:10.5281/zenodo.6386596 <https://dx.doi.org/10.5281/zenodo.6386596>`_
+- 23 June 2022 version: `DOI:10.5281/zenodo.10806836 <https://doi.org/10.5281/zenodo.10806836>`_
+- 2 August 2023 version: `DOI:10.5281/zenodo.10806852 <https://doi.org/10.5281/zenodo.10806852>`_
 
 Home page
 ^^^^^^^^^
@@ -65,6 +67,6 @@ for optional features used in a specific run is printed to the screen
 and log file.  Style and output location can be selected with the
 :ref:`-cite command-line switch <cite>`.  Additional references are
 given in the documentation of the :doc:`corresponding commands
-<Commands_all>` or in the :doc:`Howto tutorials <Howto>`.  So please
-make certain, that you provide the proper acknowledgments and citations
-in any published works using LAMMPS.
+<Commands_all>` or in the :doc:`Howto tutorials <Howto>`.  Please make
+certain, that you provide the proper acknowledgments and citations in
+any published works using LAMMPS.

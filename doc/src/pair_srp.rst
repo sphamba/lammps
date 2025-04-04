@@ -1,24 +1,29 @@
 .. index:: pair_style srp
+.. index:: pair_style srp/react
 
 pair_style srp command
 ======================
 
+pair_style srp/react command
+============================
 Syntax
 """"""
 
 .. code-block:: LAMMPS
 
    pair_style srp cutoff btype dist keyword value ...
+   pair_style srp/react cutoff btype dist react-id keyword value ...
 
 * cutoff = global cutoff for SRP interactions (distance units)
-* btype = bond type to apply SRP interactions to (can be wildcard, see below)
+* btype = bond type (numeric, type label, or wildcard) to apply SRP interactions to
 * distance = *min* or *mid*
+* react-id = id of either fix bond/break or fix bond/create
 * zero or more keyword/value pairs may be appended
 * keyword = *exclude*
 
   .. parsed-literal::
 
-       *bptype* value = atom type for bond particles
+       *bptype* value = atom type (numeric or type label) for bond particles
        *exclude* value = *yes* or *no*
 
 Examples
@@ -36,13 +41,23 @@ Examples
    pair_coeff 1 2 none
    pair_coeff 2 2 srp 40.0
 
+   fix        create all bond/create   100  1  2  1.0 1 prob  0.2  19852
+   pair_style hybrid dpd 1.0 1.0 12345 srp/react 0.8 * min create exclude yes
+   pair_coeff 1 1 dpd 60.0 50 1.0
+   pair_coeff 1 2 none
+   pair_coeff 2 2 srp/react 40.0
+
    pair_style hybrid srp 0.8 2 mid
    pair_coeff 1 1 none
    pair_coeff 1 2 none
    pair_coeff 2 2 srp 100.0 0.8
 
+   labelmap bond 1 C-C
+   pair_style hybrid srp 0.8 C-C mid
+
+
 Description
-"""""""""""
+
 
 Style *srp* computes a soft segmental repulsive potential (SRP) that
 acts between pairs of bonds. This potential is useful for preventing
@@ -106,6 +121,11 @@ is used.
    between atom type *bptype* and all other types of atoms.  An error
    will be flagged if :doc:`pair_style hybrid <pair_hybrid>` is not used.
 
+.. note::
+
+   If using type labels, the type labels must be defined before calling
+   the :doc:`pair_coeff <pair_coeff>` command.
+
 The optional *exclude* keyword determines if forces are computed
 between first neighbor (directly connected) bonds.  For a setting of
 *no*, first neighbor forces are computed; for *yes* they are not
@@ -118,6 +138,20 @@ by particle number, as if the command :doc:`thermo_modify norm no <thermo_modify
 
 The pairwise energy associated with style *srp* is shifted to be zero
 at the cutoff distance :math:`r_c`.
+
+----------
+
+.. versionadded:: 3Aug2022
+
+Pair style *srp/react* interfaces the pair style *srp* with the
+bond breaking and formation mechanisms provided by fix *bond/break*
+and fix *bond/create*, respectively. When using this pair style, whenever a
+bond breaking (or formation) reaction occurs, the corresponding fictitious
+particle is deleted (or inserted) during the same simulation time step as
+the reaction. This is useful in the simulation of reactive systems involving
+large polymeric molecules :ref:`(Palkar) <Palkar>`  where the segmental repulsive
+potential is necessary to minimize topological violations, and also needs to be
+turned on and off according to the progress of the reaction.
 
 ----------
 
@@ -178,3 +212,7 @@ The default keyword value is exclude = yes.
 
 **(Sirk)** Sirk TW, Sliozberg YR, Brennan JK, Lisal M, Andzelm JW, J
 Chem Phys, 136 (13) 134903, 2012.
+
+.. _Palkar:
+
+**(Palkar)** Palkar V, Kuksenok O, J. Phys. Chem. B, 126 (1), 336-346, 2022

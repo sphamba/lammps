@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -44,7 +44,7 @@ FixPythonMove::FixPythonMove(LAMMPS *lmp, int narg, char **arg) :
 
   // add current directory to PYTHONPATH
   PyObject *py_path = PySys_GetObject((char *)"path");
-  PyList_Append(py_path, PY_STRING_FROM_STRING("."));
+  PyList_Append(py_path, PyUnicode_FromString("."));
 
 
   // create integrator instance
@@ -73,7 +73,7 @@ FixPythonMove::FixPythonMove(LAMMPS *lmp, int narg, char **arg) :
     error->all(FLERR,"Could not find integrator class {} in module {}", cls_name, module_name);
   }
 
-  PyObject *ptr = PY_VOID_POINTER(lmp);
+  PyObject *ptr = PyCapsule_New((void *)lmp, nullptr, nullptr);
   PyObject *py_move_obj = PyObject_CallFunction(py_move_type, (char *)"O", ptr);
   Py_CLEAR(ptr);
 

@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -242,7 +242,7 @@ void PairCoulTT::settings(int narg, char **arg)
 void PairCoulTT::coeff(int narg, char **arg)
 {
   if (narg < 3 || narg > 6)
-    error->all(FLERR,"Incorrect args for pair coefficients");
+    error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -273,7 +273,7 @@ void PairCoulTT::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 
@@ -289,9 +289,9 @@ void PairCoulTT::init_style()
   for (ifix = 0; ifix < modify->nfix; ifix++)
     if (utils::strmatch(modify->fix[ifix]->style,"^drude")) break;
   if (ifix == modify->nfix) error->all(FLERR, "Pair coul/tt requires fix drude");
-  fix_drude = (FixDrude *) modify->fix[ifix];
+  fix_drude = dynamic_cast<FixDrude *>(modify->fix[ifix]);
 
-  neighbor->request(this,instance_me);
+  neighbor->add_request(this);
 }
 
 /* ----------------------------------------------------------------------

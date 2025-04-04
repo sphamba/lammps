@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -23,6 +23,7 @@
 #include "comm_kokkos.h"          // IWYU pragma: export
 #include "comm_tiled_kokkos.h"    // IWYU pragma: export
 #include "domain_kokkos.h"        // IWYU pragma: export
+#include "group_kokkos.h"         // IWYU pragma: export
 #include "kokkos.h"               // IWYU pragma: export
 #include "memory_kokkos.h"        // IWYU pragma: export
 #include "modify_kokkos.h"        // IWYU pragma: export
@@ -39,6 +40,7 @@
 #include "comm_brick.h"
 #include "comm_tiled.h"
 #include "domain.h"
+#include "group.h"
 #include "memory.h"
 #include "modify.h"
 #include "neighbor.h"
@@ -52,7 +54,6 @@ class KokkosLMP {
   int kokkos_exists;
   int nthreads;
   int ngpus;
-  int numa;
 
   KokkosLMP(class LAMMPS *, int, char **) { kokkos_exists = 0; }
   ~KokkosLMP() {}
@@ -60,13 +61,13 @@ class KokkosLMP {
   void accelerator(int, char **) {}
   int neigh_list_kokkos(int) { return 0; }
   int neigh_count(int) { return 0; }
+  void newton_check() {};
 };
 
 class AtomKokkos : public Atom {
  public:
   tagint **k_special;
   AtomKokkos(class LAMMPS *lmp) : Atom(lmp) {}
-  ~AtomKokkos() {}
   void sync(const ExecutionSpace /*space*/, unsigned int /*mask*/) {}
   void modified(const ExecutionSpace /*space*/, unsigned int /*mask*/) {}
 };
@@ -74,39 +75,38 @@ class AtomKokkos : public Atom {
 class CommKokkos : public CommBrick {
  public:
   CommKokkos(class LAMMPS *lmp) : CommBrick(lmp) {}
-  ~CommKokkos() {}
 };
 
 class CommTiledKokkos : public CommTiled {
  public:
   CommTiledKokkos(class LAMMPS *lmp) : CommTiled(lmp) {}
   CommTiledKokkos(class LAMMPS *lmp, Comm *oldcomm) : CommTiled(lmp, oldcomm) {}
-  ~CommTiledKokkos() {}
 };
 
 class DomainKokkos : public Domain {
  public:
   DomainKokkos(class LAMMPS *lmp) : Domain(lmp) {}
-  ~DomainKokkos() {}
+};
+
+class GroupKokkos : public Group {
+ public:
+  GroupKokkos(class LAMMPS *lmp) : Group(lmp) {}
 };
 
 class NeighborKokkos : public Neighbor {
  public:
   NeighborKokkos(class LAMMPS *lmp) : Neighbor(lmp) {}
-  ~NeighborKokkos() {}
 };
 
 class MemoryKokkos : public Memory {
  public:
   MemoryKokkos(class LAMMPS *lmp) : Memory(lmp) {}
-  ~MemoryKokkos() {}
   void grow_kokkos(tagint **, tagint **, int, int, const char *) {}
 };
 
 class ModifyKokkos : public Modify {
  public:
   ModifyKokkos(class LAMMPS *lmp) : Modify(lmp) {}
-  ~ModifyKokkos() {}
 };
 
 class DAT {

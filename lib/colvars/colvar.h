@@ -10,12 +10,11 @@
 #ifndef COLVAR_H
 #define COLVAR_H
 
-#include <iostream>
-
-#if (__cplusplus >= 201103L)
-#include <map>
 #include <functional>
-#endif
+#include <list>
+#include <iosfwd>
+#include <map>
+#include <memory>
 
 #include "colvarmodule.h"
 #include "colvarvalue.h"
@@ -91,7 +90,7 @@ public:
   /// calculations, \link colvarbias_abf \endlink, it is used to
   /// calculate the grid spacing in the direction of this collective
   /// variable.
-  cvm::real width;
+  cvm::real width = 1.0;
 
   /// \brief Implementation of the feature list for colvar
   static std::vector<feature *> cv_features;
@@ -184,13 +183,13 @@ protected:
   /// Previous velocity of the restraint center
   colvarvalue prev_v_ext;
   /// Mass of the restraint center
-  cvm::real ext_mass;
+  cvm::real ext_mass = 0.0;
   /// Restraint force constant
-  cvm::real ext_force_k;
+  cvm::real ext_force_k = 0.0;
   /// Friction coefficient for Langevin extended dynamics
-  cvm::real ext_gamma;
+  cvm::real ext_gamma = 0.0;
   /// Amplitude of Gaussian white noise for Langevin extended dynamics
-  cvm::real ext_sigma;
+  cvm::real ext_sigma = 0.0;
 
   /// \brief Applied force on extended DOF, for output (unscaled if using MTS)
   colvarvalue fr;
@@ -224,14 +223,14 @@ public:
   colvarvalue ft;
 
   /// Period, if this variable is periodic
-  cvm::real period;
+  cvm::real period = 0.0;
 
   /// Center of wrapping, if this variable is periodic
-  cvm::real wrap_center;
+  cvm::real wrap_center = 0.0;
 
   /// \brief Expand the boundaries of multiples of width, to keep the
   /// value always within range
-  bool expand_boundaries;
+  bool expand_boundaries = false;
 
   /// \brief Location of the lower boundary
   colvarvalue lower_boundary;
@@ -252,6 +251,9 @@ public:
   /// Main init function
   int init(std::string const &conf);
 
+  /// Populate the map of available CVC types
+  void define_component_types();
+
   /// Parse the CVC configuration and allocate their data
   int init_components(std::string const &conf);
 
@@ -271,10 +273,13 @@ public:
   virtual int init_dependencies();
 
 private:
-  /// Parse the CVC configuration for all components of a certain type
-  template<typename def_class_name> int init_components_type(std::string const &conf,
-                                                             char const *def_desc,
-                                                             char const *def_config_key);
+
+  /// Declare an available CVC type and its description, register them in the global map
+  template <typename def_class_name>
+  void add_component_type(char const *description, char const *config_key);
+
+  /// Initialize any CVC objects matching the given key
+  int init_components_type(const std::string &conf, const char *config_key);
 
 public:
 
@@ -346,6 +351,9 @@ public:
   /// return colvar energy if extended Lagrandian active
   cvm::real update_forces_energy();
 
+  /// \brief Integrate equations of motion of extended Lagrangian coordinate if needed
+  void update_extended_Lagrangian();
+
   /// \brief Communicate forces (previously calculated in
   /// colvar::update()) to the external degrees of freedom
   void communicate_forces();
@@ -377,10 +385,10 @@ public:
 protected:
 
   /// \brief Number of CVC objects with an active flag
-  size_t n_active_cvcs;
+  size_t n_active_cvcs = 0;
 
   /// Sum of square coefficients for active cvcs
-  cvm::real active_cvc_square_norm;
+  cvm::real active_cvc_square_norm = 0.0;
 
   /// Update the sum of square coefficients for active cvcs
   void update_active_cvc_square_norm();
@@ -450,15 +458,34 @@ public:
   /// Write a label to the trajectory file (comment line)
   std::ostream & write_traj_label(std::ostream &os);
 
-  /// Read the collective variable from a restart file
+  /// Read the colvar's state from a formatted input stream
   std::istream & read_state(std::istream &is);
-  /// Write the collective variable to a restart file
-  std::ostream & write_state(std::ostream &os);
+
+  /// Read the colvar's state from an unformatted input stream
+  cvm::memory_stream & read_state(cvm::memory_stream &is);
+
+  /// Check the name of the bias vs. the given string, set the matching_state flag accordingly
+  int check_matching_state(std::string const &state_conf);
+
+  /// Read the values of colvar mutable data from a string (used by both versions of read_state())
+  int set_state_params(std::string const &state_conf);
+
+  /// Write the state information of this colvar in a block of text, suitable for later parsing
+  std::string const get_state_params() const;
+
+  /// Write the colvar's state to a formatted output stream
+  std::ostream & write_state(std::ostream &os) const;
+
+  /// Write the colvar's state to an unformatted output stream
+  cvm::memory_stream & write_state(cvm::memory_stream &os) const;
 
   /// Write output files (if defined, e.g. in analysis mode)
   int write_output_files();
 
 protected:
+
+  /// Flag used to tell if the state string being read is for this colvar
+  bool matching_state;
 
   /// Previous value (to calculate velocities during analysis)
   colvarvalue            x_old;
@@ -541,20 +568,18 @@ protected:
   size_t         runave_stride;
   /// Name of the file to write the running average
   std::string    runave_outfile;
-  /// File to write the running average
-  std::ostream  *runave_os;
   /// Current value of the running average
   colvarvalue    runave;
   /// Current value of the square deviation from the running average
-  cvm::real      runave_variance;
+  cvm::real      runave_variance = 0.0;
 
   /// Calculate the running average and its standard deviation
   int calc_runave();
 
   /// If extended Lagrangian active: colvar kinetic energy
-  cvm::real kinetic_energy;
+  cvm::real kinetic_energy = 0.0;
   /// If extended Lagrangian active: colvar harmonic potential
-  cvm::real potential_energy;
+  cvm::real potential_energy = 0.0;
 
 public:
 
@@ -592,8 +617,10 @@ public:
   class alpha_angles;
   class dihedPC;
   class alch_lambda;
-  class componentDisabled;
+  class alch_Flambda;
   class CartesianBasedPath;
+  class aspath;
+  class azpath;
   class gspath;
   class gzpath;
   class linearCombination;
@@ -605,6 +632,8 @@ public:
   class euler_phi;
   class euler_psi;
   class euler_theta;
+  class neuralNetwork;
+  class customColvar;
 
   // non-scalar components
   class distance_vec;
@@ -615,18 +644,19 @@ public:
   // components that do not handle any atoms directly
   class map_total;
 
-  /// getter of the global cvc map
-#if (__cplusplus >= 201103L)
   /// A global mapping of cvc names to the cvc constructors
-  static const std::map<std::string, std::function<colvar::cvc* (const std::string& subcv_conf)>>& get_global_cvc_map() {
-      return global_cvc_map;
+  static const std::map<std::string, std::function<colvar::cvc *()>> &get_global_cvc_map()
+  {
+    return global_cvc_map;
   }
-#endif
+
+  /// \brief function for sorting cvcs by their names
+  static bool compare_cvc(const colvar::cvc* const i, const colvar::cvc* const j);
 
 protected:
 
-  /// \brief Array of \link colvar::cvc \endlink objects
-  std::vector<cvc *> cvcs;
+  /// Array of components objects
+  std::vector<std::shared_ptr<colvar::cvc>> cvcs;
 
   /// \brief Flags to enable or disable cvcs at next colvar evaluation
   std::vector<bool> cvc_flags;
@@ -657,10 +687,11 @@ protected:
   double dev_null;
 #endif
 
-#if (__cplusplus >= 201103L)
   /// A global mapping of cvc names to the cvc constructors
-  static std::map<std::string, std::function<colvar::cvc* (const std::string& subcv_conf)>> global_cvc_map;
-#endif
+  static std::map<std::string, std::function<colvar::cvc *()>> global_cvc_map;
+
+  /// A global mapping of cvc names to the corresponding descriptions
+  static std::map<std::string, std::string> global_cvc_desc_map;
 
   /// Volmap numeric IDs, one for each CVC (-1 if not available)
   std::vector<int> volmap_ids_;
@@ -748,4 +779,3 @@ inline void colvar::reset_bias_force() {
 }
 
 #endif
-

@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -16,7 +16,7 @@
    Contributing authors: Julien Tranchida (SNL)
 
    Please cite the related publication:
-   Bessarab, P. F., Uzdin, V. M., & Jónsson, H. (2015).
+   Bessarab, P. F., Uzdin, V. M., & Jonsson, H. (2015).
    Method for finding mechanism and activation energy of magnetic transitions,
    applied to skyrmion and antivortex annihilation.
    Computer Physics Communications, 196, 335-347.
@@ -38,21 +38,23 @@
 #include "output.h"
 #include "thermo.h"
 #include "timer.h"
+#include "tokenizer.h"
 #include "universe.h"
 #include "update.h"
 
 #include <cmath>
 #include <cstring>
+#include <exception>
 
 using namespace LAMMPS_NS;
 
 static const char cite_neb_spin[] =
-  "neb/spin command:\n\n"
+  "neb/spin command: doi:10.1016/j.cpc.2015.07.001\n\n"
   "@article{bessarab2015method,\n"
-  "title={Method for finding mechanism and activation energy of "
-  "magnetic transitions, applied to skyrmion and antivortex "
-  "annihilation},\n"
-  "author={Bessarab, P.F. and Uzdin, V.M. and J{\'o}nsson, H.},\n"
+  "title={Method for Finding Mechanism and Activation Energy of\n"
+  "  Magnetic Transitions, Applied to Skyrmion and Antivortex\n"
+  "  Annihilation},\n"
+  "author={Bessarab, P. F. and Uzdin, V. M. and J{\'o}nsson, H.},\n"
   "journal={Computer Physics Communications},\n"
   "volume={196},\n"
   "pages={335--347},\n"
@@ -61,10 +63,11 @@ static const char cite_neb_spin[] =
   "doi={10.1016/j.cpc.2015.07.001}\n"
   "}\n\n";
 
-#define MAXLINE 256
-#define CHUNK 1024
+static constexpr int MAXLINE = 256;
+static constexpr int CHUNK = 1024;
+
 // 8 attributes: tag, spin norm, position (3), spin direction (3)
-#define ATTRIBUTE_PERLINE 8
+static constexpr int ATTRIBUTE_PERLINE = 8;
 
 /* ---------------------------------------------------------------------- */
 
@@ -76,7 +79,7 @@ NEBSpin::NEBSpin(LAMMPS *lmp) : Command(lmp), fp(nullptr) {
 
 NEBSpin::~NEBSpin()
 {
-  MPI_Comm_free(&roots);
+  if (roots != MPI_COMM_NULL) MPI_Comm_free(&roots);
   memory->destroy(all);
   delete[] rdist;
   if (fp) {
@@ -92,7 +95,7 @@ NEBSpin::~NEBSpin()
 void NEBSpin::command(int narg, char **arg)
 {
   if (domain->box_exist == 0)
-    error->all(FLERR,"NEBSpin command before simulation box is defined");
+    error->all(FLERR,"NEBSpin command before simulation box is defined" + utils::errorurl(33));
 
   if (narg < 6) error->universe_all(FLERR,"Illegal NEBSpin command");
 
@@ -147,6 +150,7 @@ void NEBSpin::command(int narg, char **arg)
 
   verbose=false;
   if (strcmp(arg[narg-1],"verbose") == 0) verbose=true;
+  // run the NEB calculation
 
   run();
 }
@@ -160,18 +164,19 @@ void NEBSpin::run()
   // create MPI communicator for root proc from each world
 
   int color;
-  if (me == 0) color = 0;
-  else color = 1;
+  if (me == 0)
+    color = 0;
+  else
+    color = MPI_UNDEFINED;
   MPI_Comm_split(uworld,color,0,&roots);
 
   // search for neb_spin fix, allocate it
 
-  int ineb;
-  for (ineb = 0; ineb < modify->nfix; ineb++)
-    if (strcmp(modify->fix[ineb]->style,"neb/spin") == 0) break;
-  if (ineb == modify->nfix) error->all(FLERR,"NEBSpin requires use of fix neb/spin");
+  auto fixes = modify->get_fix_by_style("^neb/spin");
+  if (fixes.size() != 1)
+    error->all(FLERR,"NEBSpin requires use of exactly one fix neb/spin instance");
 
-  fneb = (FixNEBSpin *) modify->fix[ineb];
+  fneb = dynamic_cast<FixNEBSpin *>(fixes[0]);
   if (verbose) numall =7;
   else  numall = 4;
   memory->create(all,nreplica,numall,"neb:all");
@@ -242,7 +247,7 @@ void NEBSpin::run()
   // perform regular NEBSpin for n1steps or until replicas converge
   // retrieve PE values from fix NEBSpin and print every nevery iterations
   // break out of while loop early if converged
-  // damped dynamic min styles insure all replicas converge together
+  // damped dynamic min styles ensure all replicas converge together
 
   timer->init();
   timer->barrier_start();
@@ -330,7 +335,7 @@ void NEBSpin::run()
   // perform climbing NEBSpin for n2steps or until replicas converge
   // retrieve PE values from fix NEBSpin and print every nevery iterations
   // break induced if converged
-  // damped dynamic min styles insure all replicas converge together
+  // damped dynamic min styles ensure all replicas converge together
 
   timer->init();
   timer->barrier_start();
@@ -370,12 +375,11 @@ void NEBSpin::run()
 
 void NEBSpin::readfile(char *file, int flag)
 {
-  int i,j,m,nchunk,eofflag,nlines;
+  int i,nchunk,eofflag,nlines;
   tagint tag;
   char *eof,*start,*next,*buf;
-  char line[MAXLINE];
-  double xx,yy,zz;
-  double musp,spx,spy,spz;
+  char line[MAXLINE] = {'\0'};
+  double musp,xx,yy,zz,spx,spy,spz;
 
   if (me_universe == 0 && universe->uscreen)
     fprintf(universe->uscreen,"Reading NEBSpin coordinate file(s) ...\n");
@@ -387,37 +391,39 @@ void NEBSpin::readfile(char *file, int flag)
   if (flag == 0) {
     if (me_universe == 0) {
       open(file);
-      while (1) {
+      while (true) {
         eof = fgets(line,MAXLINE,fp);
         if (eof == nullptr) error->one(FLERR,"Unexpected end of neb/spin file");
         start = &line[strspn(line," \t\n\v\f\r")];
         if (*start != '\0' && *start != '#') break;
       }
-      sscanf(line,"%d",&nlines);
+      int rv = sscanf(line,"%d",&nlines);
+      if (rv != 1) nlines = -1;
     }
     MPI_Bcast(&nlines,1,MPI_INT,0,uworld);
-
+    if (nlines < 0)
+      error->universe_all(FLERR,"Incorrectly formatted NEB file");
   } else {
     if (me == 0) {
       if (ireplica) {
         open(file);
-        while (1) {
+        while (true) {
           eof = fgets(line,MAXLINE,fp);
           if (eof == nullptr) error->one(FLERR,"Unexpected end of neb/spin file");
           start = &line[strspn(line," \t\n\v\f\r")];
           if (*start != '\0' && *start != '#') break;
         }
-        sscanf(line,"%d",&nlines);
+        int rv = sscanf(line,"%d",&nlines);
+        if (rv != 1) nlines = -1;
       } else nlines = 0;
     }
     MPI_Bcast(&nlines,1,MPI_INT,0,world);
+    if (nlines < 0)
+      error->all(FLERR,"Incorrectly formatted NEB file");
   }
 
-  char *buffer = new char[CHUNK*MAXLINE];
-  char **values = new char*[ATTRIBUTE_PERLINE];
-
+  auto buffer = new char[CHUNK*MAXLINE];
   double fraction = ireplica/(nreplica-1.0);
-
   double **x = atom->x;
   double **sp = atom->sp;
   double spinit[3],spfinal[3];
@@ -427,11 +433,7 @@ void NEBSpin::readfile(char *file, int flag)
   // two versions of read_lines_from_file() for world vs universe bcast
   // count # of atom coords changed so can check for invalid atom IDs in file
 
-  int ncount = 0;
-
-  int temp_flag,rot_flag;
-  temp_flag = rot_flag = 0;
-  int nread = 0;
+  int ncount=0, nread=0, temp_flag=0, rot_flag=0;
   while (nread < nlines) {
     nchunk = MIN(nlines-nread,CHUNK);
     if (flag == 0)
@@ -444,7 +446,7 @@ void NEBSpin::readfile(char *file, int flag)
     buf = buffer;
     next = strchr(buf,'\n');
     *next = '\0';
-    int nwords = utils::trim_and_count_words(buf);
+    int nwords = utils::count_words(utils::trim_comment(buf));
     *next = '\n';
 
     if (nwords != ATTRIBUTE_PERLINE)
@@ -455,75 +457,77 @@ void NEBSpin::readfile(char *file, int flag)
 
     for (i = 0; i < nchunk; i++) {
       next = strchr(buf,'\n');
+      *next = '\0';
 
-      values[0] = strtok(buf," \t\n\r\f");
-      for (j = 1; j < nwords; j++)
-        values[j] = strtok(nullptr," \t\n\r\f");
+      try {
+        ValueTokenizer values(buf," \t\n\r\f");
 
-      // adjust spin coord based on replica fraction
-      // for flag = 0, interpolate for intermediate and final replicas
-      // for flag = 1, replace existing coord with new coord
-      // ignore image flags of final x
-      // for interpolation:
-      //   new x is displacement from old x via minimum image convention
-      //   if final x is across periodic boundary:
-      //     new x may be outside box
-      //     will be remapped back into box when simulation starts
-      //     its image flags will then be adjusted
+        // adjust spin coord based on replica fraction
+        // for flag = 0, interpolate for intermediate and final replicas
+        // for flag = 1, replace existing coord with new coord
+        // ignore image flags of final x
+        // for interpolation:
+        //   new x is displacement from old x via minimum image convention
+        //   if final x is across periodic boundary:
+        //     new x may be outside box
+        //     will be remapped back into box when simulation starts
+        //     its image flags will then be adjusted
 
-      tag = ATOTAGINT(values[0]);
-      m = atom->map(tag);
-      if (m >= 0 && m < nlocal) {
-        ncount++;
-        musp = atof(values[1]);
-        xx = atof(values[2]);
-        yy = atof(values[3]);
-        zz = atof(values[4]);
-        spx = atof(values[5]);
-        spy = atof(values[6]);
-        spz = atof(values[7]);
+        tag = values.next_tagint();
+        int m = atom->map(tag);
+        if (m >= 0 && m < nlocal) {
+          ncount++;
 
-        if (flag == 0) {
+          musp = values.next_double();
+          xx = values.next_double();
+          yy = values.next_double();
+          zz = values.next_double();
+          spx = values.next_double();
+          spy = values.next_double();
+          spz = values.next_double();
 
-          spinit[0] = sp[m][0];
-          spinit[1] = sp[m][1];
-          spinit[2] = sp[m][2];
-          spfinal[0] = spx;
-          spfinal[1] = spy;
-          spfinal[2] = spz;
+          if (flag == 0) {
 
-          // interpolate intermediate spin states
+            spinit[0] = sp[m][0];
+            spinit[1] = sp[m][1];
+            spinit[2] = sp[m][2];
+            spfinal[0] = spx;
+            spfinal[1] = spy;
+            spfinal[2] = spz;
 
-          sp[m][3] = musp;
-          if (fraction == 0.0) {
-            sp[m][0] = spinit[0];
-            sp[m][1] = spinit[1];
-            sp[m][2] = spinit[2];
-          } else if (fraction == 1.0) {
-            sp[m][0] = spfinal[0];
-            sp[m][1] = spfinal[1];
-            sp[m][2] = spfinal[2];
+            // interpolate intermediate spin states
+
+            sp[m][3] = musp;
+            if (fraction == 0.0) {
+              sp[m][0] = spinit[0];
+              sp[m][1] = spinit[1];
+              sp[m][2] = spinit[2];
+            } else if (fraction == 1.0) {
+              sp[m][0] = spfinal[0];
+              sp[m][1] = spfinal[1];
+              sp[m][2] = spfinal[2];
+            } else {
+              temp_flag = initial_rotation(spinit,spfinal,fraction);
+              rot_flag = MAX(temp_flag,rot_flag);
+              sp[m][0] = spfinal[0];
+              sp[m][1] = spfinal[1];
+              sp[m][2] = spfinal[2];
+            }
           } else {
-            temp_flag = initial_rotation(spinit,spfinal,fraction);
-            rot_flag = MAX(temp_flag,rot_flag);
-            sp[m][0] = spfinal[0];
-            sp[m][1] = spfinal[1];
-            sp[m][2] = spfinal[2];
+            sp[m][3] = musp;
+            x[m][0] = xx;
+            x[m][1] = yy;
+            x[m][2] = zz;
+            sp[m][0] = spx;
+            sp[m][1] = spy;
+            sp[m][2] = spz;
           }
-        } else {
-          sp[m][3] = musp;
-          x[m][0] = xx;
-          x[m][1] = yy;
-          x[m][2] = zz;
-          sp[m][0] = spx;
-          sp[m][1] = spy;
-          sp[m][2] = spz;
         }
+      } catch (std::exception &e) {
+        error->universe_one(FLERR,"Incorrectly formatted NEB file: " + std::string(e.what()));
       }
-
       buf = next + 1;
     }
-
     nread += nchunk;
   }
 
@@ -549,9 +553,7 @@ void NEBSpin::readfile(char *file, int flag)
   }
 
   // clean up
-
   delete[] buffer;
-  delete[] values;
 
   if (flag == 0) {
     if (me_universe == 0) {
@@ -728,19 +730,21 @@ void NEBSpin::print_status()
     local_norm_inf = MAX(temp_inf,local_norm_inf);
   }
 
-  double fmaxreplica;
-  MPI_Allreduce(&tnorm2,&fmaxreplica,1,MPI_DOUBLE,MPI_MAX,roots);
+  double fmaxreplica = 0.0;
+  double fmaxatom = 0.0;
 
   double fnorminf = 0.0;
   MPI_Allreduce(&local_norm_inf,&fnorminf,1,MPI_DOUBLE,MPI_MAX,world);
-  double fmaxatom;
-  MPI_Allreduce(&fnorminf,&fmaxatom,1,MPI_DOUBLE,MPI_MAX,roots);
 
-  if (verbose) {
-    freplica = new double[nreplica];
-    MPI_Allgather(&tnorm2,1,MPI_DOUBLE,&freplica[0],1,MPI_DOUBLE,roots);
-    fmaxatomInRepl = new double[nreplica];
-    MPI_Allgather(&fnorminf,1,MPI_DOUBLE,&fmaxatomInRepl[0],1,MPI_DOUBLE,roots);
+  if (me == 0) {
+    MPI_Allreduce(&tnorm2,&fmaxreplica,1,MPI_DOUBLE,MPI_MAX,roots);
+    MPI_Allreduce(&fnorminf,&fmaxatom,1,MPI_DOUBLE,MPI_MAX,roots);
+    if (verbose) {
+      freplica = new double[nreplica];
+      MPI_Allgather(&tnorm2,1,MPI_DOUBLE,&freplica[0],1,MPI_DOUBLE,roots);
+      fmaxatomInRepl = new double[nreplica];
+      MPI_Allgather(&fnorminf,1,MPI_DOUBLE,&fmaxatomInRepl[0],1,MPI_DOUBLE,roots);
+    }
   }
 
   double one[7];
@@ -801,10 +805,8 @@ void NEBSpin::print_status()
     FILE *uscreen = universe->uscreen;
     FILE *ulogfile = universe->ulogfile;
     if (uscreen) {
-      fprintf(uscreen,BIGINT_FORMAT " %12.8g %12.8g ",
-              update->ntimestep,fmaxreplica,fmaxatom);
-      fprintf(uscreen,"%12.8g %12.8g %12.8g ",
-              gradvnorm0,gradvnorm1,gradvnormc);
+      utils::print(uscreen,"{} {:12.8g} {:12.8g} ",update->ntimestep,fmaxreplica,fmaxatom);
+      fprintf(uscreen,"%12.8g %12.8g %12.8g ",gradvnorm0,gradvnorm1,gradvnormc);
       fprintf(uscreen,"%12.8g %12.8g %12.8g ",ebf,ebr,endpt);
       for (int i = 0; i < nreplica; i++)
         fprintf(uscreen,"%12.8g %12.8g ",rdist[i],all[i][0]);
@@ -817,10 +819,8 @@ void NEBSpin::print_status()
     }
 
     if (ulogfile) {
-      fprintf(ulogfile,BIGINT_FORMAT " %12.8g %12.8g ",
-              update->ntimestep,fmaxreplica,fmaxatom);
-      fprintf(ulogfile,"%12.8g %12.8g %12.8g ",
-              gradvnorm0,gradvnorm1,gradvnormc);
+      utils::print(ulogfile,"{} {:12.8} {:12.8g} ",update->ntimestep,fmaxreplica,fmaxatom);
+      fprintf(ulogfile,"%12.8g %12.8g %12.8g ",gradvnorm0,gradvnorm1,gradvnormc);
       fprintf(ulogfile,"%12.8g %12.8g %12.8g ",ebf,ebr,endpt);
       for (int i = 0; i < nreplica; i++)
         fprintf(ulogfile,"%12.8g %12.8g ",rdist[i],all[i][0]);
@@ -831,6 +831,10 @@ void NEBSpin::print_status()
       }
       fprintf(ulogfile,"\n");
       fflush(ulogfile);
+    }
+    if ((me == 0) && verbose) {
+      delete[] freplica;
+      delete[] fmaxatomInRepl;
     }
   }
 }

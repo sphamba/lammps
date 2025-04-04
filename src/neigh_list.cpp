@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -23,7 +23,7 @@
 
 using namespace LAMMPS_NS;
 
-#define PGDELTA 1
+static constexpr int PGDELTA = 1;
 
 /* ---------------------------------------------------------------------- */
 
@@ -48,6 +48,7 @@ NeighList::NeighList(LAMMPS *lmp) : Pointers(lmp)
   respamiddle = 0;
   respainner = 0;
   copy = 0;
+  trim = 0;
   copymode = 0;
 
   // ptrs
@@ -97,7 +98,8 @@ NeighList::NeighList(LAMMPS *lmp) : Pointers(lmp)
 NeighList::~NeighList()
 {
   if (copymode) return;
-  if (!copy) {
+
+  if (!copy || trim || kk2cpu) {
     memory->destroy(ilist);
     memory->destroy(numneigh);
     memory->sfree(firstneigh);
@@ -144,7 +146,9 @@ void NeighList::post_constructor(NeighRequest *nq)
   respamiddle = nq->respamiddle;
   respainner = nq->respainner;
   copy = nq->copy;
+  trim = nq->trim;
   id = nq->id;
+  molskip = nq->molskip;
 
   if (nq->copy) {
     listcopy = neighbor->lists[nq->copylist];
@@ -154,14 +158,16 @@ void NeighList::post_constructor(NeighRequest *nq)
 
   if (nq->skip) {
     listskip = neighbor->lists[nq->skiplist];
-    int ntypes = atom->ntypes;
-    iskip = new int[ntypes+1];
-    memory->create(ijskip,ntypes+1,ntypes+1,"neigh_list:ijskip");
-    int i,j;
-    for (i = 1; i <= ntypes; i++) iskip[i] = nq->iskip[i];
-    for (i = 1; i <= ntypes; i++)
-      for (j = 1; j <= ntypes; j++)
-        ijskip[i][j] = nq->ijskip[i][j];
+    if (!molskip) {
+      int ntypes = atom->ntypes;
+      iskip = new int[ntypes+1];
+      memory->create(ijskip,ntypes+1,ntypes+1,"neigh_list:ijskip");
+      int i,j;
+      for (i = 1; i <= ntypes; i++) iskip[i] = nq->iskip[i];
+      for (i = 1; i <= ntypes; i++)
+        for (j = 1; j <= ntypes; j++)
+          ijskip[i][j] = nq->ijskip[i][j];
+    }
   }
 
   if (nq->halffull)
@@ -286,6 +292,8 @@ void NeighList::print_attributes()
   printf("  %d = skip flag\n",rq->skip);
   printf("  %d = off2on\n",rq->off2on);
   printf("  %d = copy flag\n",rq->copy);
+  printf("  %d = trim flag\n",rq->trim);
+  printf("  %d = kk2cpu flag\n",kk2cpu);
   printf("  %d = half/full\n",rq->halffull);
   printf("\n");
 }

@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -25,19 +25,22 @@ PairStyle(hbond/dreiding/lj,PairHbondDreidingLJ);
 namespace LAMMPS_NS {
 
 class PairHbondDreidingLJ : public Pair {
+
  public:
   PairHbondDreidingLJ(class LAMMPS *);
-  virtual ~PairHbondDreidingLJ();
-  virtual void compute(int, int);
-  void settings(int, char **);
-  virtual void coeff(int, char **);
-  virtual void init_style();
-  double init_one(int, int);
-  virtual double single(int, int, int, int, double, double, double, double &);
+  ~PairHbondDreidingLJ() override;
+  void compute(int, int) override;
+  void settings(int, char **) override;
+  void coeff(int, char **) override;
+  void init_style() override;
+  double init_one(int, int) override;
+  double single(int, int, int, int, double, double, double, double &) override;
 
  protected:
   double cut_inner_global, cut_outer_global, cut_angle_global;
   int ap_global;
+  int angle_offset_flag;          // 1 if angle offset variant used
+  double angle_offset_global;          // updated if angle offset variant used
 
   struct Param {
     double epsilon, sigma;
@@ -45,7 +48,7 @@ class PairHbondDreidingLJ : public Pair {
     double d0, alpha, r0;
     double morse1;
     double denom_vdw;
-    double cut_inner, cut_outer, cut_innersq, cut_outersq, cut_angle, offset;
+    double cut_inner, cut_outer, cut_innersq, cut_outersq, cut_angle, offset, angle_offset;
     int ap;
   };
 
@@ -64,41 +67,3 @@ class PairHbondDreidingLJ : public Pair {
 
 #endif
 #endif
-
-/* ERROR/WARNING messages:
-
-E: Illegal ... command
-
-Self-explanatory.  Check the input script syntax and compare to the
-documentation for the command.  You can use -echo screen as a
-command-line option when running LAMMPS to see the offending line.
-
-E: Incorrect args for pair coefficients
-
-Self-explanatory.  Check the input script or data file.
-
-E: Pair inner cutoff >= Pair outer cutoff
-
-The specified cutoffs for the pair style are inconsistent.
-
-E: Pair style hbond/dreiding requires molecular system
-
-Self-explanatory.
-
-E: Pair style hbond/dreiding requires atom IDs
-
-Self-explanatory.
-
-E: Pair style hbond/dreiding requires an atom map, see atom_modify
-
-Self-explanatory.
-
-E: Pair style hbond/dreiding requires newton pair on
-
-See the newton command for details.
-
-E: No pair hbond/dreiding coefficients set
-
-Self-explanatory.
-
-*/

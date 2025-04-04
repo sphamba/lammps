@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -31,13 +31,12 @@
 using namespace LAMMPS_NS;
 using namespace MathConst;
 
-#define SMALL 0.001
-
 /* ---------------------------------------------------------------------- */
 
 template<class DeviceType>
 AngleCosineKokkos<DeviceType>::AngleCosineKokkos(LAMMPS *lmp) : AngleCosine(lmp)
 {
+  kokkosable = 1;
   atomKK = (AtomKokkos *) atom;
   neighborKK = (NeighborKokkos *) neighbor;
   execution_space = ExecutionSpaceFromDevice<DeviceType>::space;
@@ -126,12 +125,12 @@ void AngleCosineKokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 
   if (eflag_atom) {
     k_eatom.template modify<DeviceType>();
-    k_eatom.template sync<LMPHostType>();
+    k_eatom.sync_host();
   }
 
   if (vflag_atom) {
     k_vatom.template modify<DeviceType>();
-    k_vatom.template sync<LMPHostType>();
+    k_vatom.sync_host();
   }
 
   copymode = 0;
@@ -150,20 +149,26 @@ void AngleCosineKokkos<DeviceType>::operator()(TagAngleCosineCompute<NEWTON_BOND
   const int i3 = anglelist(n,2);
   const int type = anglelist(n,3);
 
+  const F_FLOAT k = d_k[type];
+
+  const F_FLOAT x20 = x(i2,0);
+  const F_FLOAT x21 = x(i2,1);
+  const F_FLOAT x22 = x(i2,2);
+
   // 1st bond
 
-  const F_FLOAT delx1 = x(i1,0) - x(i2,0);
-  const F_FLOAT dely1 = x(i1,1) - x(i2,1);
-  const F_FLOAT delz1 = x(i1,2) - x(i2,2);
+  const F_FLOAT delx1 = x(i1,0) - x20;
+  const F_FLOAT dely1 = x(i1,1) - x21;
+  const F_FLOAT delz1 = x(i1,2) - x22;
 
   const F_FLOAT rsq1 = delx1*delx1 + dely1*dely1 + delz1*delz1;
   const F_FLOAT r1 = sqrt(rsq1);
 
   // 2nd bond
 
-  const F_FLOAT delx2 = x(i3,0) - x(i2,0);
-  const F_FLOAT dely2 = x(i3,1) - x(i2,1);
-  const F_FLOAT delz2 = x(i3,2) - x(i2,2);
+  const F_FLOAT delx2 = x(i3,0) - x20;
+  const F_FLOAT dely2 = x(i3,1) - x21;
+  const F_FLOAT delz2 = x(i3,2) - x22;
 
   const F_FLOAT rsq2 = delx2*delx2 + dely2*dely2 + delz2*delz2;
   const F_FLOAT r2 = sqrt(rsq2);
@@ -178,9 +183,9 @@ void AngleCosineKokkos<DeviceType>::operator()(TagAngleCosineCompute<NEWTON_BOND
   // force & energy
 
   F_FLOAT eangle = 0.0;
-  if (eflag) eangle = d_k[type]*(1.0+c);
+  if (eflag) eangle = k*(1.0+c);
 
-  const F_FLOAT a = d_k[type];
+  const F_FLOAT a = k;
   const F_FLOAT a11 = a*c / rsq1;
   const F_FLOAT a12 = -a / (r1*r2);
   const F_FLOAT a22 = a*c / rsq2;
@@ -250,7 +255,7 @@ void AngleCosineKokkos<DeviceType>::coeff(int narg, char **arg)
   for (int i = 1; i <= n; i++)
     k_k.h_view[i] = k[i];
 
-  k_k.template modify<LMPHostType>();
+  k_k.modify_host();
 }
 
 /* ----------------------------------------------------------------------
@@ -266,7 +271,7 @@ void AngleCosineKokkos<DeviceType>::read_restart(FILE *fp)
   for (int i = 1; i <= n; i++)
     k_k.h_view[i] = k[i];
 
-  k_k.template modify<LMPHostType>();
+  k_k.modify_host();
 }
 
 /* ----------------------------------------------------------------------

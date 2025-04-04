@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -9,6 +9,10 @@
    the GNU General Public License.
 
    See the README file in the top-level LAMMPS directory.
+------------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------
+   Contributing author: Paul Lafourcade (CEA-DAM-DIF, Arpajon, France)
 ------------------------------------------------------------------------- */
 
 #ifdef COMPUTE_CLASS
@@ -27,15 +31,30 @@ namespace LAMMPS_NS {
 class ComputeSNAAtom : public Compute {
  public:
   ComputeSNAAtom(class LAMMPS *, int, char **);
-  ~ComputeSNAAtom();
-  void init();
-  void init_list(int, class NeighList *);
-  void compute_peratom();
-  double memory_usage();
+  ~ComputeSNAAtom() override;
+  void init() override;
+  void init_list(int, class NeighList *) override;
+  void compute_peratom() override;
+  double memory_usage() override;
+  double rcutsq;
+
+  void select3(int, int, double *, int *, double **);
+  double * weights(double *, double, int);
+  double * tanh_weights(double *, double, double, int);
+  double sum_weights(double *, double *, int);
+  double get_target_rcut(double, double *, double, int, int, double);
+  double * dichotomie(double, double, double, double, double *, int, int, double);
 
  private:
   int nmax;
   int ncoeff;
+  int nnn;
+  int wmode;
+  double delta;
+  bool nearest_neighbors_mode;
+  double *distsq;
+  double **rlist;
+  int *nearest;
   double **cutsq;
   class NeighList *list;
   double **sna;
@@ -44,34 +63,16 @@ class ComputeSNAAtom : public Compute {
   double *wjelem;
   int *map;    // map types to [0,nelements)
   int nelements, chemflag;
+  int switchinnerflag;
+  double *sinnerelem;
+  double *dinnerelem;
   class SNA *snaptr;
   double cutmax;
   int quadraticflag;
+  int nvalues;
 };
 
 }    // namespace LAMMPS_NS
 
 #endif
 #endif
-
-/* ERROR/WARNING messages:
-
-E: Illegal ... command
-
-Self-explanatory.  Check the input script syntax and compare to the
-documentation for the command.  You can use -echo screen as a
-command-line option when running LAMMPS to see the offending line.
-
-E: Compute sna/atom requires a pair style be defined
-
-Self-explanatory.
-
-E: Compute sna/atom cutoff is longer than pairwise cutoff
-
-Self-explanatory.
-
-W: More than one compute sna/atom
-
-Self-explanatory.
-
-*/

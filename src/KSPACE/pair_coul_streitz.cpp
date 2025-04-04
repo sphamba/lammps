@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -22,14 +22,13 @@
 #include "comm.h"
 #include "error.h"
 #include "force.h"
+#include "info.h"
 #include "kspace.h"
 #include "math_const.h"
 #include "memory.h"
 #include "neigh_list.h"
-#include "neigh_request.h"
 #include "neighbor.h"
 #include "potential_file_reader.h"
-#include "tokenizer.h"
 
 #include <cmath>
 #include <cstring>
@@ -37,9 +36,8 @@
 using namespace LAMMPS_NS;
 using namespace MathConst;
 
-#define DELTA 4
-#define PGDELTA 1
-#define MAXNEIGH 24
+static constexpr int DELTA = 4;
+static constexpr int MAXNEIGH = 24;
 
 /* ---------------------------------------------------------------------- */
 
@@ -144,13 +142,11 @@ void PairCoulStreitz::init_style()
   if (!atom->q_flag)
     error->all(FLERR,"Pair style coul/streitz requires atom attribute q");
 
-  int irequest = neighbor->request(this,instance_me);
-  neighbor->requests[irequest]->half = 0;
-  neighbor->requests[irequest]->full = 1;
+  neighbor->add_request(this, NeighConst::REQ_FULL);
 
   cut_coulsq = cut_coul * cut_coul;
 
-  // insure use of KSpace long-range solver when ewald specified, set g_ewald
+  // ensure use of KSpace long-range solver when ewald specified, set g_ewald
 
   if (ewaldflag) {
     if (force->kspace == nullptr)
@@ -167,7 +163,9 @@ double PairCoulStreitz::init_one(int i, int j)
 {
   scale[j][i] = scale[i][j];
 
-  if (setflag[i][j] == 0) error->all(FLERR,"All pair coeffs are not set");
+  if (setflag[i][j] == 0)
+    error->all(FLERR, Error::NOLASTLINE,
+               "All pair coeffs are not set. Status\n" + Info::get_pair_coeff_status(lmp));
   return cut_coul;
 }
 
@@ -257,11 +255,11 @@ void PairCoulStreitz::setup_params()
     n = -1;
     for (m = 0; m < nparams; m++) {
       if (i == params[m].ielement) {
-        if (n >= 0) error->all(FLERR,"Potential file has duplicate entry");
+        if (n >= 0) error->all(FLERR,"Potential file has duplicate entry for: {}", elements[i]);
         n = m;
       }
     }
-    if (n < 0) error->all(FLERR,"Potential file is missing an entry");
+    if (n < 0) error->all(FLERR,"Potential file is missing an entry for: {}", elements[i]);
     elem1param[i] = n;
   }
 
@@ -695,6 +693,7 @@ void *PairCoulStreitz::extract(const char *str, int &dim)
   }
   if (strcmp(str,"chi") == 0 && qeq_x) {
     dim = 1;
+    qeq_x[0] = 0.0;
     for (int i = 1; i <= atom->ntypes; i++)
       if (map[i] >= 0) qeq_x[i] = params[map[i]].chi;
       else qeq_x[i] = 0.0;
@@ -702,6 +701,7 @@ void *PairCoulStreitz::extract(const char *str, int &dim)
   }
   if (strcmp(str,"eta") == 0 && qeq_j) {
     dim = 1;
+    qeq_j[0] = 0.0;
     for (int i = 1; i <= atom->ntypes; i++)
       if (map[i] >= 0) qeq_j[i] = params[map[i]].eta;
       else qeq_j[i] = 0.0;
@@ -709,6 +709,7 @@ void *PairCoulStreitz::extract(const char *str, int &dim)
   }
   if (strcmp(str,"gamma") == 0 && qeq_g) {
     dim = 1;
+    qeq_g[0] = 0.0;
     for (int i = 1; i <= atom->ntypes; i++)
       if (map[i] >= 0) qeq_g[i] = params[map[i]].gamma;
       else qeq_g[i] = 0.0;
@@ -716,6 +717,7 @@ void *PairCoulStreitz::extract(const char *str, int &dim)
   }
   if (strcmp(str,"zeta") == 0 && qeq_z) {
     dim = 1;
+    qeq_z[0] = 0.0;
     for (int i = 1; i <= atom->ntypes; i++)
       if (map[i] >= 0) qeq_z[i] = params[map[i]].zeta;
       else qeq_z[i] = 0.0;
@@ -723,6 +725,7 @@ void *PairCoulStreitz::extract(const char *str, int &dim)
   }
   if (strcmp(str,"zcore") == 0 && qeq_c) {
     dim = 1;
+    qeq_c[0] = 0.0;
     for (int i = 1; i <= atom->ntypes; i++)
       if (map[i] >= 0) qeq_c[i] = params[map[i]].zcore;
       else qeq_c[i] = 0.0;

@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -42,10 +42,10 @@ class ImproperClass2Kokkos : public ImproperClass2 {
   typedef ArrayTypes<DeviceType> AT;
 
   ImproperClass2Kokkos(class LAMMPS *);
-  virtual ~ImproperClass2Kokkos();
-  void compute(int, int);
-  void coeff(int, char **);
-  void read_restart(FILE *);
+  ~ImproperClass2Kokkos() override;
+  void compute(int, int) override;
+  void coeff(int, char **) override;
+  void read_restart(FILE *) override;
 
   template<int NEWTON_BOND, int EVFLAG>
   KOKKOS_INLINE_FUNCTION
@@ -71,6 +71,9 @@ class ImproperClass2Kokkos : public ImproperClass2 {
                           const F_FLOAT &vb2x, const F_FLOAT &vb2y, const F_FLOAT &vb2z,
                           const F_FLOAT &vb3x, const F_FLOAT &vb3y, const F_FLOAT &vb3z) const;
 
+  DAT::tdual_efloat_1d k_eatom;
+  DAT::tdual_virial_array k_vatom;
+
  protected:
 
   class NeighborKokkos *neighborKK;
@@ -78,9 +81,6 @@ class ImproperClass2Kokkos : public ImproperClass2 {
   typename AT::t_x_array_randomread x;
   typename Kokkos::View<double*[3],typename AT::t_f_array::array_layout,typename KKDevice<DeviceType>::value,Kokkos::MemoryTraits<Kokkos::Atomic> > f;
   typename AT::t_int_2d improperlist;
-
-  DAT::tdual_efloat_1d k_eatom;
-  DAT::tdual_virial_array k_vatom;
   typename AT::t_efloat_1d d_eatom;
   typename AT::t_virial_array d_vatom;
 
@@ -107,15 +107,3 @@ class ImproperClass2Kokkos : public ImproperClass2 {
 #endif
 #endif
 
-/* ERROR/WARNING messages:
-
-W: Improper problem
-
-UNDOCUMENTED
-
-U: Dihedral problem
-
-Conformation of the 4 listed dihedral atoms is extreme; you may want
-to check your simulation geometry.
-
-*/

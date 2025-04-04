@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS Development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -19,7 +19,9 @@
 #include "info.h"
 #include "input.h"
 #include "output.h"
+#include "platform.h"
 #include "update.h"
+#include "utils.h"
 #include "variable.h"
 
 #include "../testing/core.h"
@@ -36,15 +38,12 @@
 // whether to print verbose output (i.e. not capturing LAMMPS screen output).
 bool verbose = false;
 
-using LAMMPS_NS::utils::split_words;
-
 namespace LAMMPS_NS {
+using ::testing::ContainsRegex;
 using ::testing::ExitedWithCode;
-using ::testing::MatchesRegex;
 using ::testing::StrEq;
 
-class SimpleCommandsTest : public LAMMPSTest {
-};
+class SimpleCommandsTest : public LAMMPSTest {};
 
 TEST_F(SimpleCommandsTest, UnknownCommand)
 {
@@ -81,7 +80,7 @@ TEST_F(SimpleCommandsTest, Echo)
     ASSERT_EQ(lmp->input->echo_log, 1);
 
     TEST_FAILURE(".*ERROR: Illegal echo command.*", command("echo"););
-    TEST_FAILURE(".*ERROR: Illegal echo command.*", command("echo xxx"););
+    TEST_FAILURE(".*ERROR: Unknown echo keyword: xxx.*", command("echo xxx"););
 }
 
 TEST_F(SimpleCommandsTest, Log)
@@ -215,8 +214,11 @@ TEST_F(SimpleCommandsTest, Quit)
     END_HIDE_OUTPUT();
     TEST_FAILURE(".*ERROR: Expected integer .*", command("quit xxx"););
 
-    // the following tests must be skipped with OpenMPI due to using threads
-    if (platform::mpi_vendor() == "Open MPI") GTEST_SKIP();
+    // the following tests must be skipped with OpenMPI or MPICH 4.1 and later due to using threads
+    if (platform::mpi_vendor() == "Open MPI") GTEST_SKIP() << "OpenMPI";
+#if defined(MPICH_NUMVERSION)
+    if (MPICH_NUMVERSION >= 40100000) GTEST_SKIP() << "MPICH with threads";
+#endif
     ASSERT_EXIT(command("quit"), ExitedWithCode(0), "");
     ASSERT_EXIT(command("quit 9"), ExitedWithCode(9), "");
 }
@@ -224,20 +226,35 @@ TEST_F(SimpleCommandsTest, Quit)
 TEST_F(SimpleCommandsTest, ResetTimestep)
 {
     ASSERT_EQ(lmp->update->ntimestep, 0);
+    ASSERT_EQ(lmp->update->atimestep, 0);
+    ASSERT_DOUBLE_EQ(lmp->update->atime, 0.0);
 
     BEGIN_HIDE_OUTPUT();
     command("reset_timestep 10");
     END_HIDE_OUTPUT();
     ASSERT_EQ(lmp->update->ntimestep, 10);
+    ASSERT_EQ(lmp->update->atimestep, 10);
+    ASSERT_DOUBLE_EQ(lmp->update->atime, lmp->update->dt * 10);
 
     BEGIN_HIDE_OUTPUT();
     command("reset_timestep 0");
     END_HIDE_OUTPUT();
     ASSERT_EQ(lmp->update->ntimestep, 0);
+    ASSERT_EQ(lmp->update->atimestep, 0);
+    ASSERT_DOUBLE_EQ(lmp->update->atime, 0.0);
+
+    BEGIN_HIDE_OUTPUT();
+    command("reset_timestep 10 time 100.0");
+    END_HIDE_OUTPUT();
+    ASSERT_EQ(lmp->update->ntimestep, 10);
+    ASSERT_EQ(lmp->update->atimestep, 10);
+    ASSERT_DOUBLE_EQ(lmp->update->atime, 100.0);
 
     TEST_FAILURE(".*ERROR: Timestep must be >= 0.*", command("reset_timestep -10"););
     TEST_FAILURE(".*ERROR: Illegal reset_timestep .*", command("reset_timestep"););
-    TEST_FAILURE(".*ERROR: Illegal reset_timestep .*", command("reset_timestep 10 10"););
+    TEST_FAILURE(".*ERROR: Unknown reset_timestep option 10.*", command("reset_timestep 10 10"););
+    TEST_FAILURE(".*ERROR: Illegal reset_timestep .*", command("reset_timestep 10 time"););
+    TEST_FAILURE(".*ERROR: Expected floating .*", command("reset_timestep 10 time xxx"););
     TEST_FAILURE(".*ERROR: Expected integer .*", command("reset_timestep xxx"););
 }
 
@@ -253,14 +270,22 @@ TEST_F(SimpleCommandsTest, Suffix)
 
     BEGIN_HIDE_OUTPUT();
     command("suffix one");
+    command("suffix yes");
     END_HIDE_OUTPUT();
     ASSERT_THAT(lmp->suffix, StrEq("one"));
+    ASSERT_EQ(lmp->suffix_enable, 1);
+    ASSERT_THAT(utils::strip_style_suffix("one/four", lmp), StrEq("one/four"));
+    ASSERT_THAT(utils::strip_style_suffix("four/one", lmp), StrEq("four"));
 
     BEGIN_HIDE_OUTPUT();
     command("suffix hybrid two three");
     END_HIDE_OUTPUT();
     ASSERT_THAT(lmp->suffix, StrEq("two"));
     ASSERT_THAT(lmp->suffix2, StrEq("three"));
+    ASSERT_THAT(utils::strip_style_suffix("one/four", lmp), StrEq("one/four"));
+    ASSERT_THAT(utils::strip_style_suffix("one/two", lmp), StrEq("one"));
+    ASSERT_THAT(utils::strip_style_suffix("one/three", lmp), StrEq("one"));
+    ASSERT_THAT(utils::strip_style_suffix("four/one", lmp), StrEq("four/one"));
 
     BEGIN_HIDE_OUTPUT();
     command("suffix four");
@@ -272,11 +297,13 @@ TEST_F(SimpleCommandsTest, Suffix)
     command("suffix off");
     END_HIDE_OUTPUT();
     ASSERT_EQ(lmp->suffix_enable, 0);
+    ASSERT_THAT(utils::strip_style_suffix("one/four", lmp), StrEq("one/four"));
 
     BEGIN_HIDE_OUTPUT();
     command("suffix yes");
     END_HIDE_OUTPUT();
     ASSERT_EQ(lmp->suffix_enable, 1);
+    ASSERT_THAT(utils::strip_style_suffix("one/four", lmp), StrEq("one"));
 
     BEGIN_HIDE_OUTPUT();
     command("suffix no");
@@ -325,7 +352,7 @@ TEST_F(SimpleCommandsTest, Thermo)
     ASSERT_EQ(lmp->output->var_thermo, nullptr);
 
     TEST_FAILURE(".*ERROR: Illegal thermo command.*", command("thermo"););
-    TEST_FAILURE(".*ERROR: Illegal thermo command.*", command("thermo -1"););
+    TEST_FAILURE(".*ERROR: Illegal thermo output frequency.*", command("thermo -1"););
     TEST_FAILURE(".*ERROR: Expected integer.*", command("thermo xxx"););
 }
 
@@ -378,75 +405,74 @@ TEST_F(SimpleCommandsTest, Units)
     END_HIDE_OUTPUT();
     ASSERT_THAT(lmp->update->unit_style, StrEq("lj"));
 
-    TEST_FAILURE(".*ERROR: Illegal units command.*", command("units unknown"););
+    TEST_FAILURE(".*ERROR: Unknown units style unknown.*", command("units unknown"););
 }
 
 #if defined(LMP_PLUGIN)
 TEST_F(SimpleCommandsTest, Plugin)
 {
-    std::string loadfmt("plugin load {}plugin.so");
+    const char *bindir = getenv("LAMMPS_PLUGIN_DIR");
+    if (!bindir) GTEST_SKIP() << "LAMMPS_PLUGIN_DIR not set";
+    std::string loadfmt = "plugin load {}/{}plugin.so";
     ::testing::internal::CaptureStdout();
-    lmp->input->one(fmt::format(loadfmt, "hello"));
+    lmp->input->one(fmt::format(fmt::runtime(loadfmt), bindir, "hello"));
     auto text = ::testing::internal::GetCapturedStdout();
     if (verbose) std::cout << text;
-    ASSERT_THAT(text, MatchesRegex(".*Loading plugin: Hello world command.*"));
+    ASSERT_THAT(text, ContainsRegex(".*\n.*Loading plugin: Hello world command.*"));
 
     ::testing::internal::CaptureStdout();
-    lmp->input->one(fmt::format(loadfmt, "xxx"));
+    lmp->input->one(fmt::format(fmt::runtime(loadfmt), bindir, "xxx"));
     text = ::testing::internal::GetCapturedStdout();
     if (verbose) std::cout << text;
-    ASSERT_THAT(text, MatchesRegex(".*Open of file xxx.* failed.*"));
+    ASSERT_THAT(text, ContainsRegex(".*Open of file .*xxx.* failed.*"));
 
     ::testing::internal::CaptureStdout();
-    lmp->input->one(fmt::format(loadfmt, "nve2"));
+    lmp->input->one(fmt::format(fmt::runtime(loadfmt), bindir, "nve2"));
     text = ::testing::internal::GetCapturedStdout();
     if (verbose) std::cout << text;
-    ASSERT_THAT(text, MatchesRegex(".*Loading plugin: NVE2 variant fix style.*"));
+    ASSERT_THAT(text, ContainsRegex(".*Loading plugin: NVE2 variant fix style.*"));
     ::testing::internal::CaptureStdout();
     lmp->input->one("plugin list");
     text = ::testing::internal::GetCapturedStdout();
     if (verbose) std::cout << text;
-    ASSERT_THAT(text, MatchesRegex(".*1: command style plugin hello"
-                                   ".*2: fix style plugin nve2.*"));
+    ASSERT_THAT(text, ContainsRegex(".*1: command style plugin hello\n.*2: fix style plugin nve2.*"));
 
     ::testing::internal::CaptureStdout();
-    lmp->input->one(fmt::format(loadfmt, "hello"));
+    lmp->input->one(fmt::format(fmt::runtime(loadfmt), bindir, "hello"));
     text = ::testing::internal::GetCapturedStdout();
     if (verbose) std::cout << text;
-    ASSERT_THAT(text, MatchesRegex(".*Ignoring load of command style hello: "
-                                   "must unload existing hello plugin.*"));
+    ASSERT_THAT(text, ContainsRegex(".*Ignoring load of command style hello: "
+                                    "must unload existing hello plugin.*"));
 
     ::testing::internal::CaptureStdout();
     lmp->input->one("plugin unload command hello");
     text = ::testing::internal::GetCapturedStdout();
     if (verbose) std::cout << text;
-    ASSERT_THAT(text, MatchesRegex(".*Unloading command style hello.*"));
+    ASSERT_THAT(text, ContainsRegex(".*Unloading command style hello.*"));
 
     ::testing::internal::CaptureStdout();
     lmp->input->one("plugin unload pair nve2");
     text = ::testing::internal::GetCapturedStdout();
     if (verbose) std::cout << text;
-    ASSERT_THAT(text, MatchesRegex(".*Ignoring unload of pair style nve2: "
-                                   "not loaded from a plugin.*"));
+    ASSERT_THAT(text, ContainsRegex(".*Ignoring unload of pair style nve2: not from a plugin.*"));
 
     ::testing::internal::CaptureStdout();
     lmp->input->one("plugin unload fix nve2");
     text = ::testing::internal::GetCapturedStdout();
     if (verbose) std::cout << text;
-    ASSERT_THAT(text, MatchesRegex(".*Unloading fix style nve2.*"));
+    ASSERT_THAT(text, ContainsRegex(".*Unloading fix style nve2.*"));
 
     ::testing::internal::CaptureStdout();
     lmp->input->one("plugin unload fix nve");
     text = ::testing::internal::GetCapturedStdout();
     if (verbose) std::cout << text;
-    ASSERT_THAT(text, MatchesRegex(".*Ignoring unload of fix style nve: "
-                                   "not loaded from a plugin.*"));
+    ASSERT_THAT(text, ContainsRegex(".*Ignoring unload of fix style nve: not from a plugin.*"));
 
     ::testing::internal::CaptureStdout();
     lmp->input->one("plugin list");
     text = ::testing::internal::GetCapturedStdout();
     if (verbose) std::cout << text;
-    ASSERT_THAT(text, MatchesRegex(".*Currently loaded plugins.*"));
+    ASSERT_THAT(text, ContainsRegex(".*Currently loaded plugins.*"));
 }
 #endif
 
@@ -475,7 +501,13 @@ TEST_F(SimpleCommandsTest, Shell)
 
     test_var = getenv("TEST_VARIABLE");
     ASSERT_NE(test_var, nullptr);
+#if defined(_WIN32)
+    // we cannot create empty environment variables on Windows so platform::putenv() sets their
+    // value to "1"
+    ASSERT_THAT(test_var, StrEq("1"));
+#else
     ASSERT_THAT(test_var, StrEq(""));
+#endif
 }
 
 TEST_F(SimpleCommandsTest, CiteMe)
@@ -492,8 +524,9 @@ TEST_F(SimpleCommandsTest, CiteMe)
     std::string text = END_CAPTURE_OUTPUT();
 
     // find the two unique citations, but not the third
-    ASSERT_THAT(text, MatchesRegex(".*one.*two.*"));
-    ASSERT_THAT(text, Not(MatchesRegex(".*one.*two.*one.*")));
+    ASSERT_THAT(text, ContainsRegex("test citation one.\n.*test citation two.*"));
+    ASSERT_THAT(text, Not(ContainsRegex(
+                          "test citation one.\n.*test citation two.*\n.*test citation one.*")));
 
     BEGIN_CAPTURE_OUTPUT();
     lmp->citeme->add("test citation one:\n 0\n");
@@ -504,8 +537,8 @@ TEST_F(SimpleCommandsTest, CiteMe)
     text = END_CAPTURE_OUTPUT();
 
     // find the forth (only differs in long citation) and sixth added citation
-    ASSERT_THAT(text, MatchesRegex(".*one.*three.*"));
-    ASSERT_THAT(text, Not(MatchesRegex(".*two.*")));
+    ASSERT_THAT(text, ContainsRegex("test citation one.*\n.*test citation three.*"));
+    ASSERT_THAT(text, Not(ContainsRegex("test_citation two.*\n")));
 
     BEGIN_CAPTURE_OUTPUT();
     lmp->citeme->add("test citation one:\n 1\n");
@@ -518,8 +551,52 @@ TEST_F(SimpleCommandsTest, CiteMe)
     text = END_CAPTURE_OUTPUT();
 
     // no new citation. no CITE-CITE-CITE- lines
-    ASSERT_THAT(text, Not(MatchesRegex(".*CITE-CITE-CITE-CITE.*")));
+    ASSERT_THAT(text, Not(ContainsRegex(".*CITE-CITE-CITE-CITE.*")));
 }
+
+TEST_F(SimpleCommandsTest, Geturl)
+{
+    if (!LAMMPS::is_installed_pkg("EXTRA-COMMAND")) GTEST_SKIP();
+    platform::unlink("index.html");
+    platform::unlink("myindex.html");
+    if (Info::has_curl_support()) {
+        BEGIN_CAPTURE_OUTPUT();
+        command("geturl https://www.lammps.org/index.html");
+        command("geturl https://www.lammps.org/index.html output myindex.html");
+        END_CAPTURE_OUTPUT();
+        EXPECT_TRUE(platform::file_is_readable("index.html"));
+        EXPECT_TRUE(platform::file_is_readable("myindex.html"));
+        FILE *fp = fopen("index.html", "wb");
+        fputs("just testing\n", fp);
+        fclose(fp);
+        BEGIN_CAPTURE_OUTPUT();
+        command("geturl https://www.lammps.org/index.html overwrite no");
+        END_CAPTURE_OUTPUT();
+        char checkme[20];
+        fp = fopen("index.html", "rb");
+        fgets(checkme, 19, fp);
+        fclose(fp);
+        EXPECT_EQ(strcmp(checkme, "just testing\n"), 0);
+        BEGIN_CAPTURE_OUTPUT();
+        command("geturl https://www.lammps.org/index.html overwrite yes");
+        END_CAPTURE_OUTPUT();
+        fp = fopen("index.html", "rb");
+        fgets(checkme, 19, fp);
+        fclose(fp);
+        EXPECT_NE(strcmp(checkme, "just testing\n"), 0);
+        TEST_FAILURE(".*ERROR: Illegal geturl command: missing argument.*", command("geturl "););
+        TEST_FAILURE(".*ERROR: URL 'dummy' is not a supported URL.*", command("geturl dummy"););
+        TEST_FAILURE(".*ERROR on proc 0: Download of xxx.txt failed with: "
+                     "HTTP response code said error 404.*",
+                     command("geturl https://www.lammps.org/xxx.txt"););
+    } else {
+        TEST_FAILURE(".*ERROR: LAMMPS has not been compiled with libcurl support*",
+                     command("geturl https:://www.lammps.org/index.html"););
+    }
+    platform::unlink("index.html");
+    platform::unlink("myindex.html");
+}
+
 } // namespace LAMMPS_NS
 
 int main(int argc, char **argv)
@@ -527,13 +604,9 @@ int main(int argc, char **argv)
     MPI_Init(&argc, &argv);
     ::testing::InitGoogleMock(&argc, argv);
 
-    if (platform::mpi_vendor() == "Open MPI" && !LAMMPS_NS::Info::has_exceptions())
-        std::cout << "Warning: using OpenMPI without exceptions. "
-                     "Death tests will be skipped\n";
-
     // handle arguments passed via environment variable
     if (const char *var = getenv("TEST_ARGS")) {
-        std::vector<std::string> env = split_words(var);
+        std::vector<std::string> env = LAMMPS_NS::utils::split_words(var);
         for (auto arg : env) {
             if (arg == "-v") {
                 verbose = true;

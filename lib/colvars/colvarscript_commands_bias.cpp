@@ -9,11 +9,9 @@
 
 
 #include <vector>
-#include <cstdlib>
-#include <stdlib.h>
-#include <string.h>
 
 #include "colvarproxy.h"
+#include "colvarbias.h"
 #include "colvardeps.h"
 #include "colvarscript.h"
 #include "colvarscript_commands.h"
@@ -35,6 +33,10 @@
                                      objc, N_ARGS_MIN, N_ARGS_MAX) !=   \
         COLVARSCRIPT_OK) {                                              \
       return COLVARSCRIPT_ERROR;                                        \
+    }                                                                   \
+    if (objc > 1) {                                                     \
+      /* Silence unused parameter warning */                            \
+      (void) objv;                                                      \
     }                                                                   \
     colvarbias *this_bias = colvarbias_obj(pobj);                       \
     FN_BODY;                                                            \

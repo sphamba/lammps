@@ -1,8 +1,7 @@
-// clang-format off
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -33,16 +32,16 @@ namespace LAMMPS_NS {
 class PairSWIntel : public PairSW {
  public:
   PairSWIntel(class LAMMPS *);
-  virtual ~PairSWIntel();
-  virtual void compute(int, int);
-  virtual void init_style();
+
+  void compute(int, int) override;
+  void init_style() override;
 
  protected:
   FixIntel *fix;
   int _cop;
   template <class flt_t> class ForceConst;
 
-  virtual void allocate();
+  void allocate() override;
 
   template <class flt_t, class acc_t>
   void compute(int eflag, int vflag, IntelBuffers<flt_t, acc_t> *buffers,
@@ -86,7 +85,7 @@ class PairSWIntel : public PairSW {
     fc_packed3 ***p3;
 
     ForceConst() : p2(0), p2f(0), p2f2(0), p2e(0), p3(0), _ntypes(0) {}
-    ~ForceConst() { set_ntypes(0, nullptr, _cop); }
+    ~ForceConst() noexcept(false) { set_ntypes(0, nullptr, _cop); }
 
     void set_ntypes(const int ntypes, Memory *memory, const int cop);
 
@@ -102,19 +101,3 @@ class PairSWIntel : public PairSW {
 
 #endif
 #endif
-
-/* ERROR/WARNING messages:
-
-E: The 'package intel' command is required for /intel styles
-
-Self-explanatory.
-
-E: The 'ghost no' option cannot be used with sw/intel.
-
-Self-explanatory.
-
-E: Intel compiler versions before 15 Update 1 not supported for sw/intel.
-
-Self-explanatory.
-
-*/

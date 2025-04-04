@@ -5,6 +5,7 @@ This section documents the following functions:
 
 - :cpp:func:`lammps_get_natoms`
 - :cpp:func:`lammps_get_thermo`
+- :cpp:func:`lammps_last_thermo`
 - :cpp:func:`lammps_extract_box`
 - :cpp:func:`lammps_reset_box`
 - :cpp:func:`lammps_memory_usage`
@@ -12,27 +13,30 @@ This section documents the following functions:
 - :cpp:func:`lammps_extract_setting`
 - :cpp:func:`lammps_extract_global_datatype`
 - :cpp:func:`lammps_extract_global`
+- :cpp:func:`lammps_extract_pair_dimension`
+- :cpp:func:`lammps_extract_pair`
+- :cpp:func:`lammps_map_atom`
 
 --------------------
 
-The library interface allows extraction of different kinds of
-information about the active simulation instance and also
-modifications to it.  This enables combining of a LAMMPS simulation
-with other processing and simulation methods computed by the calling
-code, or by another code that is coupled to LAMMPS via the library
-interface.  In some cases the data returned is direct reference to the
-original data inside LAMMPS, cast to a void pointer.  In that case the
-data needs to be cast to a suitable pointer for the calling program to
-access it, and you may need to know the correct dimensions and
-lengths.  This also means you can directly change those value(s) from
-the calling program, e.g. to modify atom positions.  Of course, this
-should be done with care.  When accessing per-atom data, please note
-that this data is the per-processor **local** data and is indexed
-accordingly. Per-atom data can change sizes and ordering at every
-neighbor list rebuild or atom sort event as atoms migrate between
-sub-domains and processors.
+The library interface allows the extraction of different kinds of
+information about the active simulation instance and also - in some
+cases - to apply modifications to it.  This enables combining of a
+LAMMPS simulation with other processing and simulation methods computed
+by the calling code, or by another code that is coupled to LAMMPS via
+the library interface.  In some cases the data returned is direct
+reference to the original data inside LAMMPS, cast to a void pointer.
+In that case the data needs to be cast to a suitable pointer for the
+calling program to access it, and you may need to know the correct
+dimensions and lengths.  This also means you can directly change those
+value(s) from the calling program (e.g., to modify atom positions).  Of
+course, changing values should be done with care.  When accessing per-atom
+data, please note that these data are the per-processor **local** data and are
+indexed accordingly. Per-atom data can change sizes and ordering at
+every neighbor list rebuild or atom sort event as atoms migrate between
+subdomains and processors.
 
-.. code-block:: C
+.. code-block:: c
 
    #include "library.h"
    #include <stdio.h>
@@ -81,6 +85,11 @@ sub-domains and processors.
 
 -----------------------
 
+.. doxygenfunction:: lammps_last_thermo
+   :project: progguide
+
+-----------------------
+
 .. doxygenfunction:: lammps_extract_box
    :project: progguide
 
@@ -112,5 +121,20 @@ sub-domains and processors.
 -----------------------
 
 .. doxygenfunction:: lammps_extract_global
+   :project: progguide
+
+-----------------------
+
+.. doxygenfunction:: lammps_extract_pair_dimension
+   :project: progguide
+
+-----------------------
+
+.. doxygenfunction:: lammps_extract_pair
+   :project: progguide
+
+-----------------------
+
+.. doxygenfunction:: lammps_map_atom
    :project: progguide
 

@@ -10,7 +10,7 @@ Accelerator Variants: *qeq/reaxff/kk*, *qeq/reaxff/omp*
 Syntax
 """"""
 
-.. parsed-literal::
+.. code-block:: LAMMPS
 
    fix ID group-ID qeq/reaxff Nevery cutlo cuthi tolerance params args
 
@@ -59,7 +59,7 @@ extracted from the :doc:`pair_style reaxff <pair_reaxff>` command and
 the ReaxFF force field file it reads in.  If a file name is specified
 for *params*, then the parameters are taken from the specified file
 and the file must contain one line for each atom type.  The latter
-form must be used when performing QeQ with a non-ReaxFF potential.
+form must be used when performing QEq with a non-ReaxFF potential.
 Each line should be formatted as follows:
 
 .. parsed-literal::
@@ -77,6 +77,8 @@ of this fix are hard-coded to be A, eV, and electronic charge.
 The optional *dual* keyword allows to perform the optimization
 of the S and T matrices in parallel. This is only supported for
 the *qeq/reaxff/omp* style. Otherwise they are processed separately.
+The *qeq/reaxff/kk* style always solves the S and T matrices in
+parallel.
 
 The optional *maxiter* keyword allows changing the max number
 of iterations in the linear solver. The default value is 200.
@@ -87,6 +89,14 @@ useful for comparing serial and parallel results where having the
 same fixed number of QEq iterations is desired, which can be achieved
 by using a very small tolerance and setting *maxiter* to the desired
 number of iterations.
+
+.. note::
+
+   In order to solve the self-consistent equations for electronegativity
+   equalization, LAMMPS imposes the additional constraint that all the
+   charges in the fix group must add up to zero.  The initial charge
+   assignments should also satisfy this constraint.  LAMMPS will print a
+   warning if that is not the case.
 
 Restart, fix_modify, output, run start/stop, minimize info
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -114,18 +124,24 @@ LAMMPS was built with that package. See the :doc:`Build package
 
 This fix does not correctly handle interactions involving multiple
 periodic images of the same atom.  Hence, it should not be used for
-periodic cell dimensions less than 10 angstroms.
+periodic cell dimensions smaller than the non-bonded cutoff radius,
+which is typically :math:`10~\AA` for ReaxFF simulations.
 
 This fix may be used in combination with :doc:`fix efield <fix_efield>`
 and will apply the external electric field during charge equilibration,
-but there may be only one fix efield instance used, it may only use a
-constant electric field, and the electric field vector may only have
-components in non-periodic directions.
+but there may be only one fix efield instance used and the electric field
+vector may only have components in non-periodic directions. Equal-style
+variables can be used for electric field vector components without any further
+settings. Atom-style variables can be used for spatially-varying electric field
+vector components, but the resulting electric potential must be specified
+as an atom-style variable using the *potential* keyword for `fix efield`.
 
 Related commands
 """"""""""""""""
 
-:doc:`pair_style reaxff <pair_reaxff>`, :doc:`fix qeq/shielded <fix_qeq>`
+:doc:`pair_style reaxff <pair_reaxff>`, :doc:`fix qeq/shielded <fix_qeq>`,
+:doc:`fix acks2/reaxff <fix_acks2_reaxff>`, :doc:`fix qtpie/reaxff <fix_qtpie_reaxff>`,
+:doc:`fix qeq/rel/reaxff <fix_qeq_rel_reaxff>`
 
 Default
 """""""

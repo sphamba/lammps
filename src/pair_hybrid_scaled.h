@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -14,6 +14,7 @@
 #ifdef PAIR_CLASS
 // clang-format off
 PairStyle(hybrid/scaled,PairHybridScaled);
+PairStyle(hybrid/scaled/omp,PairHybridScaled);
 // clang-format on
 #else
 
@@ -30,17 +31,21 @@ namespace LAMMPS_NS {
 class PairHybridScaled : public PairHybrid {
  public:
   PairHybridScaled(class LAMMPS *);
-  virtual ~PairHybridScaled();
-  virtual void compute(int, int);
-  virtual void settings(int, char **);
-  virtual void coeff(int, char **);
+  ~PairHybridScaled() override;
+  void compute(int, int) override;
+  void settings(int, char **) override;
+  void coeff(int, char **) override;
 
-  virtual void write_restart(FILE *);
-  virtual void read_restart(FILE *);
-  virtual double single(int, int, int, int, double, double, double, double &);
+  void write_restart(FILE *) override;
+  void read_restart(FILE *) override;
+  double single(int, int, int, int, double, double, double, double &) override;
+  void born_matrix(int, int, int, int, double, double, double, double &, double &) override;
 
-  void init_svector();
-  void copy_svector(int, int);
+  void init_svector() override;
+  void copy_svector(int, int) override;
+
+  int pack_forward_comm(int, int *, double *, int, int *) override;
+  void unpack_forward_comm(int, int, double *) override;
 
  protected:
   double **fsum, **tsum;
@@ -48,21 +53,11 @@ class PairHybridScaled : public PairHybrid {
   int *scaleidx;
   std::vector<std::string> scalevars;
   int nmaxfsum;
+  int *atomvar;         // indices of atom-style variables
+  double *atomscale;    // vector of atom-style variable values
 };
 
 }    // namespace LAMMPS_NS
 
 #endif
 #endif
-
-/* ERROR/WARNING messages:
-
-E: Incorrect args for pair coefficients
-
-Self-explanatory.  Check the input script or data file.
-
-E: Pair coeff for hybrid has invalid style
-
-Style in pair coeff must have been listed in pair_style command.
-
-*/

@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -17,21 +17,23 @@
 ------------------------------------------------------------------------- */
 
 #include "compute_hexorder_atom.h"
-#include <cmath>
-#include <cstring>
-#include <complex>
+
 #include "atom.h"
-#include "update.h"
-#include "modify.h"
-#include "neighbor.h"
-#include "neigh_list.h"
-#include "neigh_request.h"
-#include "force.h"
-#include "pair.h"
 #include "comm.h"
-#include "memory.h"
 #include "error.h"
+#include "force.h"
 #include "math_const.h"
+#include "memory.h"
+#include "modify.h"
+#include "neigh_list.h"
+#include "neighbor.h"
+#include "pair.h"
+#include "update.h"
+
+#include <cmath>
+#include <complex>
+#include <cstring>
+#include <utility>
 
 #ifdef DBL_EPSILON
   #define MY_EPSILON (10.0*DBL_EPSILON)
@@ -109,22 +111,13 @@ void ComputeHexOrderAtom::init()
     error->all(FLERR,"Compute hexorder/atom requires a pair style be defined");
   if (cutsq == 0.0) cutsq = force->pair->cutforce * force->pair->cutforce;
   else if (sqrt(cutsq) > force->pair->cutforce)
-    error->all(FLERR,
-               "Compute hexorder/atom cutoff is longer than pairwise cutoff");
+    error->all(FLERR, "Compute hexorder/atom cutoff is longer than pairwise cutoff");
 
   // need an occasional full neighbor list
 
-  int irequest = neighbor->request(this,instance_me);
-  neighbor->requests[irequest]->pair = 0;
-  neighbor->requests[irequest]->compute = 1;
-  neighbor->requests[irequest]->half = 0;
-  neighbor->requests[irequest]->full = 1;
-  neighbor->requests[irequest]->occasional = 1;
+  neighbor->add_request(this, NeighConst::REQ_FULL | NeighConst::REQ_OCCASIONAL);
 
-  int count = 0;
-  for (int i = 0; i < modify->ncompute; i++)
-    if (strcmp(modify->compute[i]->style,"hexorder/atom") == 0) count++;
-  if (count > 1 && comm->me == 0)
+  if ((modify->get_compute_by_style("hexorder/atom").size() > 1) && (comm->me == 0))
     error->warning(FLERR,"More than one compute hexorder/atom");
 }
 
@@ -155,10 +148,8 @@ void ComputeHexOrderAtom::compute_peratom()
   }
 
   // invoke full neighbor list (will copy or build if necessary)
-  // on the first step of a run, set preflag to one in neighbor->build_one(...)
 
-  if (update->firststep == update->ntimestep) neighbor->build_one(list,1);
-  else neighbor->build_one(list);
+  neighbor->build_one(list);
 
   inum = list->inum;
   ilist = list->ilist;
@@ -181,7 +172,7 @@ void ComputeHexOrderAtom::compute_peratom()
       jlist = firstneigh[i];
       jnum = numneigh[i];
 
-      // insure distsq and nearest arrays are long enough
+      // ensure distsq and nearest arrays are long enough
 
       if (jnum > maxneigh) {
         memory->destroy(distsq);
@@ -275,53 +266,50 @@ inline void ComputeHexOrderAtom::calc_qn_trig(double delx, double dely, double &
    sort auxiliary array at same time
 ------------------------------------------------------------------------- */
 
-#define SWAP(a,b)   tmp = a; a = b; b = tmp;
-#define ISWAP(a,b) itmp = a; a = b; b = itmp;
-
 /* ---------------------------------------------------------------------- */
 
 void ComputeHexOrderAtom::select2(int k, int n, double *arr, int *iarr)
 {
-  int i,ir,j,l,mid,ia,itmp;
-  double a,tmp;
+  int i,ir,j,l,mid,ia;
+  double a;
 
   arr--;
   iarr--;
   l = 1;
   ir = n;
-  for (;;) {
+  while (true) {
     if (ir <= l+1) {
       if (ir == l+1 && arr[ir] < arr[l]) {
-        SWAP(arr[l],arr[ir])
-        ISWAP(iarr[l],iarr[ir])
+        std::swap(arr[l],arr[ir]);
+        std::swap(iarr[l],iarr[ir]);
       }
       return;
     } else {
       mid=(l+ir) >> 1;
-      SWAP(arr[mid],arr[l+1])
-      ISWAP(iarr[mid],iarr[l+1])
+      std::swap(arr[mid],arr[l+1]);
+      std::swap(iarr[mid],iarr[l+1]);
       if (arr[l] > arr[ir]) {
-        SWAP(arr[l],arr[ir])
-        ISWAP(iarr[l],iarr[ir])
+        std::swap(arr[l],arr[ir]);
+        std::swap(iarr[l],iarr[ir]);
       }
       if (arr[l+1] > arr[ir]) {
-        SWAP(arr[l+1],arr[ir])
-        ISWAP(iarr[l+1],iarr[ir])
+        std::swap(arr[l+1],arr[ir]);
+        std::swap(iarr[l+1],iarr[ir]);
       }
       if (arr[l] > arr[l+1]) {
-        SWAP(arr[l],arr[l+1])
-        ISWAP(iarr[l],iarr[l+1])
+        std::swap(arr[l],arr[l+1]);
+        std::swap(iarr[l],iarr[l+1]);
       }
       i = l+1;
       j = ir;
       a = arr[l+1];
       ia = iarr[l+1];
-      for (;;) {
+      while (true) {
         do i++; while (arr[i] < a);
         do j--; while (arr[j] > a);
         if (j < i) break;
-        SWAP(arr[i],arr[j])
-        ISWAP(iarr[i],iarr[j])
+        std::swap(arr[i],arr[j]);
+        std::swap(iarr[i],iarr[j]);
       }
       arr[l+1] = arr[j];
       arr[j] = a;

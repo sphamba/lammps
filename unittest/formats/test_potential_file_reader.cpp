@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS Development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -37,7 +37,6 @@
 #include <vector>
 
 using namespace LAMMPS_NS;
-using ::testing::MatchesRegex;
 using utils::split_words;
 
 // whether to print verbose output (i.e. not capturing LAMMPS screen output).
@@ -58,8 +57,7 @@ constexpr int LAMMPS_NS::PairVashishta::NPARAMS_PER_LINE;
 constexpr int LAMMPS_NS::PairTersoffTable::NPARAMS_PER_LINE;
 #endif
 
-class PotentialFileReaderTest : public LAMMPSTest {
-};
+class PotentialFileReaderTest : public LAMMPSTest {};
 
 // open for native units
 TEST_F(PotentialFileReaderTest, Sw_native)
@@ -69,7 +67,7 @@ TEST_F(PotentialFileReaderTest, Sw_native)
     PotentialFileReader reader(lmp, "Si.sw", "Stillinger-Weber");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairSW::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairSW::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairSW::NPARAMS_PER_LINE);
 }
 
@@ -81,7 +79,7 @@ TEST_F(PotentialFileReaderTest, Sw_conv)
     PotentialFileReader reader(lmp, "Si.sw", "Stillinger-Weber", utils::METAL2REAL);
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairSW::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairSW::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairSW::NPARAMS_PER_LINE);
 }
 
@@ -103,7 +101,7 @@ TEST_F(PotentialFileReaderTest, Comb)
     PotentialFileReader reader(lmp, "ffield.comb", "COMB");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairComb::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairComb::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairComb::NPARAMS_PER_LINE);
 }
 
@@ -114,7 +112,7 @@ TEST_F(PotentialFileReaderTest, Comb3)
     PotentialFileReader reader(lmp, "ffield.comb3", "COMB3");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairComb3::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairComb3::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairComb3::NPARAMS_PER_LINE);
 }
 
@@ -125,7 +123,7 @@ TEST_F(PotentialFileReaderTest, Tersoff)
     PotentialFileReader reader(lmp, "Si.tersoff", "Tersoff");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairTersoff::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairTersoff::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairTersoff::NPARAMS_PER_LINE);
 }
 
@@ -136,7 +134,7 @@ TEST_F(PotentialFileReaderTest, TersoffMod)
     PotentialFileReader reader(lmp, "Si.tersoff.mod", "Tersoff/Mod");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairTersoffMOD::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairTersoffMOD::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairTersoffMOD::NPARAMS_PER_LINE);
 }
 
@@ -147,7 +145,7 @@ TEST_F(PotentialFileReaderTest, TersoffModC)
     PotentialFileReader reader(lmp, "Si.tersoff.modc", "Tersoff/ModC");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairTersoffMODC::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairTersoffMODC::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairTersoffMODC::NPARAMS_PER_LINE);
 }
 
@@ -158,7 +156,7 @@ TEST_F(PotentialFileReaderTest, TersoffTable)
     PotentialFileReader reader(lmp, "Si.tersoff", "TersoffTable");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairTersoffTable::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairTersoffTable::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairTersoffTable::NPARAMS_PER_LINE);
 }
 
@@ -169,7 +167,7 @@ TEST_F(PotentialFileReaderTest, TersoffZBL)
     PotentialFileReader reader(lmp, "SiC.tersoff.zbl", "Tersoff/ZBL");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairTersoffZBL::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairTersoffZBL::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairTersoffZBL::NPARAMS_PER_LINE);
 }
 
@@ -180,7 +178,7 @@ TEST_F(PotentialFileReaderTest, GW)
     PotentialFileReader reader(lmp, "SiC.gw", "GW");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairGW::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairGW::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairGW::NPARAMS_PER_LINE);
 }
 
@@ -191,7 +189,7 @@ TEST_F(PotentialFileReaderTest, GWZBL)
     PotentialFileReader reader(lmp, "SiC.gw.zbl", "GW/ZBL");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairGWZBL::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairGWZBL::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairGWZBL::NPARAMS_PER_LINE);
 }
 
@@ -202,7 +200,7 @@ TEST_F(PotentialFileReaderTest, Nb3bHarmonic)
     PotentialFileReader reader(lmp, "MOH.nb3b.harmonic", "NB3B Harmonic");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairNb3bHarmonic::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairNb3bHarmonic::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairNb3bHarmonic::NPARAMS_PER_LINE);
 }
 
@@ -213,7 +211,7 @@ TEST_F(PotentialFileReaderTest, Vashishta)
     PotentialFileReader reader(lmp, "SiC.vashishta", "Vashishta");
     END_HIDE_OUTPUT();
 
-    auto line = reader.next_line(PairVashishta::NPARAMS_PER_LINE);
+    auto *line = reader.next_line(PairVashishta::NPARAMS_PER_LINE);
     ASSERT_EQ(utils::count_words(line), PairVashishta::NPARAMS_PER_LINE);
 }
 
@@ -260,8 +258,7 @@ TEST_F(PotentialFileReaderTest, UnitConvert)
     delete reader;
 }
 
-class OpenPotentialTest : public LAMMPSTest {
-};
+class OpenPotentialTest : public LAMMPSTest {};
 
 // open for native units
 TEST_F(OpenPotentialTest, Sw_native)
@@ -283,7 +280,7 @@ TEST_F(OpenPotentialTest, Sw_conv)
 {
     int convert_flag = utils::get_supported_conversions(utils::ENERGY);
     ASSERT_EQ(convert_flag, utils::METAL2REAL | utils::REAL2METAL);
-    BEGIN_HIDE_OUTPUT();
+    BEGIN_CAPTURE_OUTPUT();
     command("units real");
     FILE *fp    = utils::open_potential("Si.sw", lmp, &convert_flag);
     auto text   = END_CAPTURE_OUTPUT();
@@ -301,7 +298,7 @@ TEST_F(OpenPotentialTest, Sw_noconv)
     BEGIN_HIDE_OUTPUT();
     command("units real");
     END_HIDE_OUTPUT();
-    TEST_FAILURE(".*potential.*requires metal units but real.*",
+    TEST_FAILURE(".*Potential.*requires metal units but real.*",
                  utils::open_potential("Si.sw", lmp, nullptr););
     BEGIN_HIDE_OUTPUT();
     command("units lj");
@@ -325,10 +322,6 @@ int main(int argc, char **argv)
 {
     MPI_Init(&argc, &argv);
     ::testing::InitGoogleMock(&argc, argv);
-
-    if (platform::mpi_vendor() == "Open MPI" && !LAMMPS_NS::Info::has_exceptions())
-        std::cout << "Warning: using OpenMPI without exceptions. "
-                     "Death tests will be skipped\n";
 
     // handle arguments passed via environment variable
     if (const char *var = getenv("TEST_ARGS")) {

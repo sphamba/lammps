@@ -2,7 +2,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -31,11 +31,11 @@ class PairEAMIntel : public PairEAM {
   friend class FixSemiGrandCanonicalMC;    // Alex Stukowski option
 
   PairEAMIntel(class LAMMPS *);
-  virtual ~PairEAMIntel();
-  virtual void compute(int, int);
-  void init_style();
-  int pack_forward_comm(int, int *, double *, int, int *);
-  void unpack_forward_comm(int, int, double *);
+  ~PairEAMIntel() override;
+  void compute(int, int) override;
+  void init_style() override;
+  int pack_forward_comm(int, int *, double *, int, int *) override;
+  void unpack_forward_comm(int, int, double *) override;
 
  protected:
   FixIntel *fix;
@@ -73,7 +73,7 @@ class PairEAMIntel : public PairEAM {
     fc_packed2 *z2r_spline_t;
 
     ForceConst() : _ntypes(0), _nr(0) {}
-    ~ForceConst() { set_ntypes(0, 0, 0, nullptr, _cop); }
+    ~ForceConst() noexcept(false) { set_ntypes(0, 0, 0, nullptr, _cop); }
 
     void set_ntypes(const int ntypes, const int nr, const int nrho, Memory *memory, const int cop);
     inline int rhor_jstride() const { return _nr; }
@@ -92,11 +92,3 @@ class PairEAMIntel : public PairEAM {
 
 #endif
 #endif
-
-/* ERROR/WARNING messages:
-
-E: The 'package intel' command is required for /intel styles
-
-Self-explanatory.
-
-*/

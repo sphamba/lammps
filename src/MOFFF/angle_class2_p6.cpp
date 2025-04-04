@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -34,7 +34,7 @@
 using namespace LAMMPS_NS;
 using namespace MathConst;
 
-#define SMALL 0.001
+static constexpr double SMALL = 0.001;
 
 /* ---------------------------------------------------------------------- */
 
@@ -174,6 +174,8 @@ void AngleClass2P6::compute(int eflag, int vflag)
 
     // force & energy for bond-angle term
 
+    dr1 = r1 - ba_r1[type];
+    dr2 = r2 - ba_r2[type];
     aa1 = s * dr1 * ba_k1[type];
     aa2 = s * dr2 * ba_k2[type];
 
@@ -277,7 +279,7 @@ void AngleClass2P6::allocate()
 
 void AngleClass2P6::coeff(int narg, char **arg)
 {
-  if (narg < 2) error->all(FLERR,"Incorrect args for angle coefficients");
+  if (narg < 2) error->all(FLERR,"Incorrect args for angle coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi;
@@ -286,7 +288,7 @@ void AngleClass2P6::coeff(int narg, char **arg)
   int count = 0;
 
   if (strcmp(arg[1],"bb") == 0) {
-    if (narg != 5) error->all(FLERR,"Incorrect args for angle coefficients");
+    if (narg != 5) error->all(FLERR,"Incorrect args for angle coefficients" + utils::errorurl(21));
 
     double bb_k_one = utils::numeric(FLERR,arg[2],false,lmp);
     double bb_r1_one = utils::numeric(FLERR,arg[3],false,lmp);
@@ -301,7 +303,7 @@ void AngleClass2P6::coeff(int narg, char **arg)
     }
 
   } else if (strcmp(arg[1],"ba") == 0) {
-    if (narg != 6) error->all(FLERR,"Incorrect args for angle coefficients");
+    if (narg != 6) error->all(FLERR,"Incorrect args for angle coefficients" + utils::errorurl(21));
 
     double ba_k1_one = utils::numeric(FLERR,arg[2],false,lmp);
     double ba_k2_one = utils::numeric(FLERR,arg[3],false,lmp);
@@ -318,7 +320,7 @@ void AngleClass2P6::coeff(int narg, char **arg)
     }
 
   } else {
-    if (narg != 7) error->all(FLERR,"Incorrect args for angle coefficients");
+    if (narg != 7) error->all(FLERR,"Incorrect args for angle coefficients" + utils::errorurl(21));
 
     double theta0_one = utils::numeric(FLERR,arg[1],false,lmp);
     double k2_one = utils::numeric(FLERR,arg[2],false,lmp);
@@ -341,7 +343,7 @@ void AngleClass2P6::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for angle coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for angle coefficients" + utils::errorurl(21));
 
   for (int i = ilo; i <= ihi; i++)
     if (setflag_a[i] == 1 && setflag_bb[i] == 1 && setflag_ba[i] == 1)
@@ -479,6 +481,25 @@ double AngleClass2P6::single(int type, int i1, int i2, int i3)
   double dr2 = r2 - bb_r2[type];
   energy += bb_k[type]*dr1*dr2;
 
+  dr1 = r1 - ba_r1[type];
+  dr2 = r2 - ba_r2[type];
   energy += ba_k1[type]*dr1*dtheta + ba_k2[type]*dr2*dtheta;
+
   return energy;
+}
+
+/* ----------------------------------------------------------------------
+   return ptr to internal members upon request
+------------------------------------------------------------------------ */
+
+void *AngleClass2P6::extract(const char *str, int &dim)
+{
+  dim = 1;
+  if (strcmp(str, "k2") == 0) return (void *) k2;
+  if (strcmp(str, "k3") == 0) return (void *) k3;
+  if (strcmp(str, "k4") == 0) return (void *) k4;
+  if (strcmp(str, "k5") == 0) return (void *) k5;
+  if (strcmp(str, "k6") == 0) return (void *) k6;
+  if (strcmp(str, "theta0") == 0) return (void *) theta0;
+  return nullptr;
 }

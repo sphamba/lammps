@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -13,24 +13,7 @@
 
 #include <mpi.h>
 
-// User-settable FFT precision
-
-// FFT_PRECISION = 1 is single-precision complex (4-byte real, 4-byte imag)
-// FFT_PRECISION = 2 is double-precision complex (8-byte real, 8-byte imag)
-
-#ifdef FFT_SINGLE
-#define FFT_PRECISION 1
-typedef float FFT_SCALAR;
-#else
-#define FFT_PRECISION 2
-typedef double FFT_SCALAR;
-#endif
-
-// if user set FFTW, it means FFTW3
-
-#ifdef FFT_FFTW
-#define FFT_FFTW3
-#endif
+#include "lmpfftsettings.h"
 
 // -------------------------------------------------------------------------
 
@@ -40,7 +23,7 @@ typedef double FFT_SCALAR;
 
 #if defined(FFT_MKL)
 #include "mkl_dfti.h"
-typedef float _Complex FFT_DATA;
+typedef MKL_Complex8 FFT_DATA;
 #define FFT_MKL_PREC DFTI_SINGLE
 
 #elif defined(FFT_FFTW3)
@@ -48,6 +31,10 @@ typedef float _Complex FFT_DATA;
 typedef fftwf_complex FFT_DATA;
 #define FFTW_API(function) fftwf_##function
 
+#elif defined(FFT_NVPL)
+#include "nvpl_fftw.h"
+typedef fftwf_complex FFT_DATA;
+#define FFTW_API(function) fftwf_##function
 #else
 
 /* use a stripped down version of kiss fft as default fft */
@@ -73,11 +60,16 @@ typedef struct kiss_fft_state *kiss_fft_cfg;
 
 #if defined(FFT_MKL)
 #include "mkl_dfti.h"
-typedef double _Complex FFT_DATA;
+typedef MKL_Complex16 FFT_DATA;
 #define FFT_MKL_PREC DFTI_DOUBLE
 
 #elif defined(FFT_FFTW3)
 #include "fftw3.h"
+typedef fftw_complex FFT_DATA;
+#define FFTW_API(function) fftw_##function
+
+#elif defined(FFT_NVPL)
+#include "nvpl_fftw.h"
 typedef fftw_complex FFT_DATA;
 #define FFTW_API(function) fftw_##function
 
@@ -125,7 +117,7 @@ struct fft_plan_3d {
   DFTI_DESCRIPTOR *handle_fast;
   DFTI_DESCRIPTOR *handle_mid;
   DFTI_DESCRIPTOR *handle_slow;
-#elif defined(FFT_FFTW3)
+#elif defined(FFT_FFTW3) || defined(FFT_NVPL)
   FFTW_API(plan) plan_fast_forward;
   FFTW_API(plan) plan_fast_backward;
   FFTW_API(plan) plan_mid_forward;
@@ -153,7 +145,3 @@ void factor(int, int *, int *);
 void bifactor(int, int *, int *);
 void fft_1d_only(FFT_DATA *, int, int, struct fft_plan_3d *);
 }
-
-/* ERROR/WARNING messages:
-
-*/

@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -56,20 +56,7 @@ void DumpCustomZstd::openfile()
   if (multiproc) filecurrent = multiname;
 
   if (multifile) {
-    char *filestar = filecurrent;
-    filecurrent = new char[strlen(filestar) + 16];
-    char *ptr = strchr(filestar,'*');
-    *ptr = '\0';
-    if (padflag == 0)
-      sprintf(filecurrent,"%s" BIGINT_FORMAT "%s",
-              filestar,update->ntimestep,ptr+1);
-    else {
-      char bif[8],pad[16];
-      strcpy(bif,BIGINT_FORMAT);
-      sprintf(pad,"%%s%%0%d%s%%s",padflag,&bif[1]);
-      sprintf(filecurrent,pad,filestar,update->ntimestep,ptr+1);
-    }
-    *ptr = '*';
+    filecurrent = utils::strdup(utils::star_subst(filecurrent, update->ntimestep, padflag));
     if (maxfiles > 0) {
       if (numfiles < maxfiles) {
         nameslist[numfiles] = utils::strdup(filecurrent);
@@ -135,7 +122,7 @@ void DumpCustomZstd::write_header(bigint ndump)
     }
     header += fmt::format("ITEM: ATOMS {}\n", columns);
 
-    writer.write(header.c_str(), header.length());
+    (void) writer.write(header.c_str(), header.length());
   }
 }
 
@@ -144,7 +131,7 @@ void DumpCustomZstd::write_header(bigint ndump)
 void DumpCustomZstd::write_data(int n, double *mybuf)
 {
   if (buffer_flag == 1) {
-    writer.write(mybuf, n);
+    (void) writer.write(mybuf, n);
   } else {
     constexpr size_t VBUFFER_SIZE = 256;
     char vbuffer[VBUFFER_SIZE];
@@ -163,13 +150,13 @@ void DumpCustomZstd::write_data(int n, double *mybuf)
         }
 
         if (written > 0) {
-          writer.write(vbuffer, written);
+          (void) writer.write(vbuffer, written);
         } else if (written < 0) {
           error->one(FLERR, "Error while writing dump custom/gz output");
         }
         m++;
       }
-      writer.write("\n", 1);
+      (void) writer.write("\n", 1);
     }
   }
 }

@@ -1,8 +1,7 @@
-// clang-format off
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -34,10 +33,9 @@ class PairLJCutCoulLongIntel : public PairLJCutCoulLong {
 
  public:
   PairLJCutCoulLongIntel(class LAMMPS *);
-  virtual ~PairLJCutCoulLongIntel();
 
-  virtual void compute(int, int);
-  void init_style();
+  void compute(int, int) override;
+  void init_style() override;
 
   typedef struct {
     float x, y, z;
@@ -80,7 +78,7 @@ class PairLJCutCoulLongIntel : public PairLJCutCoulLong {
     flt_t *etable, *detable, *ctable, *dctable;
 
     ForceConst() : _ntypes(0), _ntable(0) {}
-    ~ForceConst() { set_ntypes(0, 0, nullptr, _cop); }
+    ~ForceConst() noexcept(false) { set_ntypes(0, 0, nullptr, _cop); }
 
     void set_ntypes(const int ntypes, const int ntable, Memory *memory, const int cop);
 
@@ -96,11 +94,3 @@ class PairLJCutCoulLongIntel : public PairLJCutCoulLong {
 
 #endif
 #endif
-
-/* ERROR/WARNING messages:
-
-E: The 'package intel' command is required for /intel styles
-
-Self-explanatory.
-
-*/

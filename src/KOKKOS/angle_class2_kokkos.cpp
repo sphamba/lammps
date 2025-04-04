@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -31,13 +31,14 @@
 using namespace LAMMPS_NS;
 using namespace MathConst;
 
-#define SMALL 0.001
+static constexpr double SMALL = 0.001;
 
 /* ---------------------------------------------------------------------- */
 
 template<class DeviceType>
 AngleClass2Kokkos<DeviceType>::AngleClass2Kokkos(LAMMPS *lmp) : AngleClass2(lmp)
 {
+  kokkosable = 1;
   atomKK = (AtomKokkos *) atom;
   neighborKK = (NeighborKokkos *) neighbor;
   execution_space = ExecutionSpaceFromDevice<DeviceType>::space;
@@ -141,12 +142,12 @@ void AngleClass2Kokkos<DeviceType>::compute(int eflag_in, int vflag_in)
 
   if (eflag_atom) {
     k_eatom.template modify<DeviceType>();
-    k_eatom.template sync<LMPHostType>();
+    k_eatom.sync_host();
   }
 
   if (vflag_atom) {
     k_vatom.template modify<DeviceType>();
-    k_vatom.template sync<LMPHostType>();
+    k_vatom.sync_host();
   }
 
   copymode = 0;
@@ -224,8 +225,8 @@ void AngleClass2Kokkos<DeviceType>::operator()(TagAngleClass2Compute<NEWTON_BOND
 
   // force & energy for bond-bond term
 
-  const F_FLOAT dr1 = r1 - d_bb_r1[type];
-  const F_FLOAT dr2 = r2 - d_bb_r2[type];
+  F_FLOAT dr1 = r1 - d_bb_r1[type];
+  F_FLOAT dr2 = r2 - d_bb_r2[type];
   const F_FLOAT tk1 = d_bb_k[type] * dr1;
   const F_FLOAT tk2 = d_bb_k[type] * dr2;
 
@@ -241,6 +242,8 @@ void AngleClass2Kokkos<DeviceType>::operator()(TagAngleClass2Compute<NEWTON_BOND
 
   // force & energy for bond-angle term
 
+  dr1 = r1 - d_ba_r1[type];
+  dr2 = r2 - d_ba_r2[type];
   const F_FLOAT aa1 = s * dr1 * d_ba_k1[type];
   const F_FLOAT aa2 = s * dr2 * d_ba_k2[type];
 
@@ -384,21 +387,21 @@ void AngleClass2Kokkos<DeviceType>::coeff(int narg, char **arg)
     k_theta0.h_view[i] = theta0[i];
   }
 
-  k_k2.template modify<LMPHostType>();
-  k_k3.template modify<LMPHostType>();
-  k_k4.template modify<LMPHostType>();
-  k_bb_k.template modify<LMPHostType>();
-  k_bb_r1.template modify<LMPHostType>();
-  k_bb_r2.template modify<LMPHostType>();
-  k_ba_k1.template modify<LMPHostType>();
-  k_ba_k2.template modify<LMPHostType>();
-  k_ba_r1.template modify<LMPHostType>();
-  k_ba_r2.template modify<LMPHostType>();
-  k_setflag.template modify<LMPHostType>();
-  k_setflag_a.template modify<LMPHostType>();
-  k_setflag_bb.template modify<LMPHostType>();
-  k_setflag_ba.template modify<LMPHostType>();
-  k_theta0.template modify<LMPHostType>();
+  k_k2.modify_host();
+  k_k3.modify_host();
+  k_k4.modify_host();
+  k_bb_k.modify_host();
+  k_bb_r1.modify_host();
+  k_bb_r2.modify_host();
+  k_ba_k1.modify_host();
+  k_ba_k2.modify_host();
+  k_ba_r1.modify_host();
+  k_ba_r2.modify_host();
+  k_setflag.modify_host();
+  k_setflag_a.modify_host();
+  k_setflag_bb.modify_host();
+  k_setflag_ba.modify_host();
+  k_theta0.modify_host();
 }
 
 /* ----------------------------------------------------------------------
@@ -463,21 +466,21 @@ void AngleClass2Kokkos<DeviceType>::read_restart(FILE *fp)
     k_theta0.h_view[i] = theta0[i];
   }
 
-  k_k2.template modify<LMPHostType>();
-  k_k3.template modify<LMPHostType>();
-  k_k4.template modify<LMPHostType>();
-  k_bb_k.template modify<LMPHostType>();
-  k_bb_r1.template modify<LMPHostType>();
-  k_bb_r2.template modify<LMPHostType>();
-  k_ba_k1.template modify<LMPHostType>();
-  k_ba_k2.template modify<LMPHostType>();
-  k_ba_r1.template modify<LMPHostType>();
-  k_ba_r2.template modify<LMPHostType>();
-  k_setflag.template modify<LMPHostType>();
-  k_setflag_a.template modify<LMPHostType>();
-  k_setflag_bb.template modify<LMPHostType>();
-  k_setflag_ba.template modify<LMPHostType>();
-  k_theta0.template modify<LMPHostType>();
+  k_k2.modify_host();
+  k_k3.modify_host();
+  k_k4.modify_host();
+  k_bb_k.modify_host();
+  k_bb_r1.modify_host();
+  k_bb_r2.modify_host();
+  k_ba_k1.modify_host();
+  k_ba_k2.modify_host();
+  k_ba_r1.modify_host();
+  k_ba_r2.modify_host();
+  k_setflag.modify_host();
+  k_setflag_a.modify_host();
+  k_setflag_bb.modify_host();
+  k_setflag_ba.modify_host();
+  k_theta0.modify_host();
 }
 
 /* ----------------------------------------------------------------------

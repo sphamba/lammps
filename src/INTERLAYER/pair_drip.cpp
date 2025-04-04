@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -26,9 +26,9 @@
 #include "comm.h"
 #include "error.h"
 #include "force.h"
+#include "info.h"
 #include "memory.h"
 #include "neigh_list.h"
-#include "neigh_request.h"
 #include "neighbor.h"
 #include "potential_file_reader.h"
 
@@ -37,9 +37,8 @@
 
 using namespace LAMMPS_NS;
 
-#define MAXLINE 1024
-#define DELTA 4
-#define HALF 0.5
+static constexpr int DELTA = 4;
+static constexpr double HALF = 0.5;
 
 // inline functions
 static inline double dot(double const *x, double const *y)
@@ -92,10 +91,7 @@ void PairDRIP::init_style()
   if (!atom->molecule_flag) error->all(FLERR, "Pair style drip requires atom attribute molecule");
 
   // need a full neighbor list, including neighbors of ghosts
-  int irequest = neighbor->request(this, instance_me);
-  neighbor->requests[irequest]->half = 0;
-  neighbor->requests[irequest]->full = 1;
-  neighbor->requests[irequest]->ghost = 1;
+  neighbor->add_request(this, NeighConst::REQ_FULL | NeighConst::REQ_GHOST);
 }
 
 /* ----------------------------------------------------------------------
@@ -141,7 +137,9 @@ void PairDRIP::coeff(int narg, char **arg)
 
 double PairDRIP::init_one(int i, int j)
 {
-  if (setflag[i][j] == 0) error->all(FLERR, "All pair coeffs are not set");
+  if (setflag[i][j] == 0)
+    error->all(FLERR, Error::NOLASTLINE,
+               "All pair coeffs are not set. Status:\n" + Info::get_pair_coeff_status(lmp));
 
   int itype = map[i];
   int jtype = map[j];
@@ -259,11 +257,15 @@ void PairDRIP::read_file(char *filename)
       int n = -1;
       for (int m = 0; m < nparams; m++) {
         if (i == params[m].ielement && j == params[m].jelement) {
-          if (n >= 0) error->all(FLERR, "DRIP potential file has duplicate entry");
+          if (n >= 0)
+            error->all(FLERR, "DRIP potential file has a duplicate entry for: {} {}", elements[i],
+                       elements[j]);
           n = m;
         }
       }
-      if (n < 0) error->all(FLERR, "Potential file is missing an entry");
+      if (n < 0)
+        error->all(FLERR, "Potential file is missing an entry for: {} {}", elements[i],
+                   elements[j]);
       elem2param[i][j] = n;
     }
   }

@@ -1,7 +1,7 @@
 /* -*- c++ -*- ----------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -27,6 +27,7 @@ FixStyle(acks2/reax/kk/host,FixACKS2ReaxFFKokkos<LMPHostType>);
 
 #include "fix_acks2_reaxff.h"
 #include "kokkos_type.h"
+#include "kokkos_base.h"
 #include "neigh_list.h"
 #include "neigh_list_kokkos.h"
 
@@ -54,11 +55,10 @@ struct TagACKS2Precon1B{};
 struct TagACKS2Precon2{};
 struct TagACKS2Add{};
 struct TagACKS2ZeroQGhosts{};
-struct TagACKS2CalculateQ1{};
-struct TagACKS2CalculateQ2{};
+struct TagACKS2CalculateQ{};
 
 template<class DeviceType>
-class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF {
+class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF, public KokkosBase {
  public:
   typedef DeviceType device_type;
   typedef double value_type;
@@ -66,15 +66,15 @@ class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF {
   FixACKS2ReaxFFKokkos(class LAMMPS *, int, char **);
   ~FixACKS2ReaxFFKokkos();
 
+  void init() override;
+  void setup_pre_force(int) override;
+  void pre_force(int) override;
   void cleanup_copy();
-  void init();
-  void setup_pre_force(int);
-  void pre_force(int);
 
   DAT::tdual_ffloat_1d get_s() {return k_s;}
 
   KOKKOS_INLINE_FUNCTION
-  void num_neigh_item(int, int&) const;
+  void num_neigh_item(int, bigint&) const;
 
   KOKKOS_INLINE_FUNCTION
   void operator()(TagACKS2Zero, const int&) const;
@@ -84,7 +84,7 @@ class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF {
 
   template<int NEIGHFLAG>
   KOKKOS_INLINE_FUNCTION
-  void compute_h_item(int, int &, const bool &) const;
+  void compute_h_item(int, bigint &, const bool &) const;
 
   template<int NEIGHFLAG>
   KOKKOS_INLINE_FUNCTION
@@ -92,7 +92,7 @@ class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF {
 
   template<int NEIGHFLAG>
   KOKKOS_INLINE_FUNCTION
-  void compute_x_item(int, int &, const bool &) const;
+  void compute_x_item(int, bigint &, const bool &) const;
 
   template<int NEIGHFLAG>
   KOKKOS_INLINE_FUNCTION
@@ -152,10 +152,7 @@ class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF {
   void operator()(TagACKS2ZeroQGhosts, const int&) const;
 
   KOKKOS_INLINE_FUNCTION
-  void operator()(TagACKS2CalculateQ1, const int&) const;
-
-  KOKKOS_INLINE_FUNCTION
-  void operator()(TagACKS2CalculateQ2, const int&) const;
+  void operator()(TagACKS2CalculateQ, const int&) const;
 
   KOKKOS_INLINE_FUNCTION
   double calculate_H_k(const F_FLOAT &r, const F_FLOAT &shld) const;
@@ -167,7 +164,7 @@ class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF {
     KOKKOS_INLINE_FUNCTION
     params_acks2(){chi=0;eta=0;gamma=0;bcut_acks2=0;};
     KOKKOS_INLINE_FUNCTION
-    params_acks2(int i){chi=0;eta=0;gamma=0;bcut_acks2=0;};
+    params_acks2(int){chi=0;eta=0;gamma=0;bcut_acks2=0;};
     F_FLOAT chi, eta, gamma, bcut_acks2;
   };
 
@@ -176,23 +173,24 @@ class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF {
   int allocated_flag, last_allocate;
   int need_dup,prev_last_rows_rank;
   double* buf;
+  bigint m_cap_big;
 
-  typename AT::t_int_scalar d_mfill_offset;
+  typename AT::t_bigint_scalar d_mfill_offset;
 
   typedef Kokkos::DualView<int***,DeviceType> tdual_int_1d;
   Kokkos::DualView<params_acks2*,Kokkos::LayoutRight,DeviceType> k_params;
   typename Kokkos::DualView<params_acks2*, Kokkos::LayoutRight,DeviceType>::t_dev_const params;
 
-  typename ArrayTypes<DeviceType>::t_x_array x;
-  typename ArrayTypes<DeviceType>::t_v_array v;
-  typename ArrayTypes<DeviceType>::t_f_array_const f;
-  typename ArrayTypes<DeviceType>::t_ffloat_1d_randomread mass;
-  typename ArrayTypes<DeviceType>::t_ffloat_1d q;
-  typename ArrayTypes<DeviceType>::t_int_1d type, mask;
-  typename ArrayTypes<DeviceType>::t_tagint_1d tag;
+  typename AT::t_x_array x;
+  typename AT::t_v_array v;
+  typename AT::t_f_array_const f;
+  typename AT::t_ffloat_1d_randomread mass;
+  typename AT::t_ffloat_1d q;
+  typename AT::t_int_1d type, mask;
+  typename AT::t_tagint_1d tag;
 
-  typename ArrayTypes<DeviceType>::t_neighbors_2d d_neighbors;
-  typename ArrayTypes<DeviceType>::t_int_1d_randomread d_ilist, d_numneigh;
+  typename AT::t_neighbors_2d d_neighbors;
+  typename AT::t_int_1d_randomread d_ilist, d_numneigh;
 
   DAT::tdual_ffloat_1d k_tap;
   typename AT::t_ffloat_1d d_tap;
@@ -200,12 +198,12 @@ class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF {
   DAT::tdual_ffloat_2d k_bcut;
   typename AT::t_ffloat_2d d_bcut;
 
-  typename AT::t_int_1d d_firstnbr;
+  typename AT::t_bigint_1d d_firstnbr;
   typename AT::t_int_1d d_numnbrs;
   typename AT::t_int_1d d_jlist;
   typename AT::t_ffloat_1d d_val;
 
-  typename AT::t_int_1d d_firstnbr_X;
+  typename AT::t_bigint_1d d_firstnbr_X;
   typename AT::t_int_1d d_numnbrs_X;
   typename AT::t_int_1d d_jlist_X;
   typename AT::t_ffloat_1d d_val_X;
@@ -222,36 +220,44 @@ class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF {
   typename AT::t_ffloat_2d d_shield, d_s_hist, d_s_hist_X, d_s_hist_last;
   typename AT::t_ffloat_2d_randomread r_s_hist, r_s_hist_X, r_s_hist_last;
 
-  Kokkos::Experimental::ScatterView<F_FLOAT*, typename AT::t_ffloat_1d::array_layout, typename KKDevice<DeviceType>::value, Kokkos::Experimental::ScatterSum, Kokkos::Experimental::ScatterDuplicated> dup_X_diag;
-  Kokkos::Experimental::ScatterView<F_FLOAT*, typename AT::t_ffloat_1d::array_layout, typename KKDevice<DeviceType>::value, Kokkos::Experimental::ScatterSum, Kokkos::Experimental::ScatterNonDuplicated> ndup_X_diag;
+  using KKDeviceType = typename KKDevice<DeviceType>::value;
 
-  Kokkos::Experimental::ScatterView<F_FLOAT*, typename AT::t_ffloat_1d::array_layout, typename KKDevice<DeviceType>::value, Kokkos::Experimental::ScatterSum, Kokkos::Experimental::ScatterDuplicated> dup_bb;
-  Kokkos::Experimental::ScatterView<F_FLOAT*, typename AT::t_ffloat_1d::array_layout, typename KKDevice<DeviceType>::value, Kokkos::Experimental::ScatterSum, Kokkos::Experimental::ScatterNonDuplicated> ndup_bb;
+  template<typename DataType, typename Layout>
+  using DupScatterView = KKScatterView<DataType, Layout, KKDeviceType, KKScatterSum, KKScatterDuplicated>;
+
+  template<typename DataType, typename Layout>
+  using NonDupScatterView = KKScatterView<DataType, Layout, KKDeviceType, KKScatterSum, KKScatterNonDuplicated>;
+
+  DupScatterView<F_FLOAT*, typename AT::t_ffloat_1d::array_layout> dup_X_diag;
+  NonDupScatterView<F_FLOAT*, typename AT::t_ffloat_1d::array_layout> ndup_X_diag;
+
+  DupScatterView<F_FLOAT*, typename AT::t_ffloat_1d::array_layout> dup_bb;
+  NonDupScatterView<F_FLOAT*, typename AT::t_ffloat_1d::array_layout> ndup_bb;
 
   void init_shielding_k();
   void init_hist();
-  void allocate_matrix();
+  void allocate_matrix() override;
   void allocate_array();
   void deallocate_array();
   int bicgstab_solve();
-  void calculate_Q();
+  void calculate_Q() override;
 
   int neighflag;
-  int nlocal,nall,nmax,newton_pair;
+  int nlocal,nlocal_last_allocate,nall,nmax,newton_pair;
   int count, isuccess;
   double alpha, beta, omega, cutsq;
 
-  int iswap;
   int first;
-  typename AT::t_int_2d d_sendlist;
+  typename AT::t_int_1d d_sendlist;
   typename AT::t_xfloat_1d_um v_buf;
 
-  void grow_arrays(int);
-  void copy_arrays(int, int, int);
-  int pack_exchange(int, double *);
-  int unpack_exchange(int, double *);
-  void get_chi_field();
-  double memory_usage();
+  void grow_arrays(int) override;
+  void copy_arrays(int, int, int) override;
+  void sort_kokkos(Kokkos::BinSort<KeyViewType, BinOp> &Sorter) override;
+  int pack_exchange(int, double *) override;
+  int unpack_exchange(int, double *) override;
+  void get_chi_field() override;
+  double memory_usage() override;
 
   void sparse_matvec_acks2(typename AT::t_ffloat_1d &, typename AT::t_ffloat_1d &);
 };
@@ -259,21 +265,21 @@ class FixACKS2ReaxFFKokkos : public FixACKS2ReaxFF {
 template <class DeviceType>
 struct FixACKS2ReaxFFKokkosNumNeighFunctor  {
   typedef DeviceType device_type;
-  typedef int value_type;
+  typedef bigint value_type;
   FixACKS2ReaxFFKokkos<DeviceType> c;
   FixACKS2ReaxFFKokkosNumNeighFunctor(FixACKS2ReaxFFKokkos<DeviceType>* c_ptr):c(*c_ptr) {
     c.cleanup_copy();
   };
   KOKKOS_INLINE_FUNCTION
-  void operator()(const int ii, int &maxneigh) const {
-    c.num_neigh_item(ii, maxneigh);
+  void operator()(const int ii, bigint &totneigh) const {
+    c.num_neigh_item(ii, totneigh);
   }
 };
 
 template <class DeviceType, int NEIGHFLAG>
 struct FixACKS2ReaxFFKokkosComputeHFunctor {
   int atoms_per_team, vector_length;
-  typedef int value_type;
+  typedef bigint value_type;
   typedef Kokkos::ScratchMemorySpace<DeviceType> scratch_space;
   FixACKS2ReaxFFKokkos<DeviceType> c;
 
@@ -283,13 +289,12 @@ struct FixACKS2ReaxFFKokkosComputeHFunctor {
 
   FixACKS2ReaxFFKokkosComputeHFunctor(FixACKS2ReaxFFKokkos<DeviceType> *c_ptr,
                                   int _atoms_per_team, int _vector_length)
-      : c(*c_ptr), atoms_per_team(_atoms_per_team),
-        vector_length(_vector_length) {
+      : atoms_per_team(_atoms_per_team), vector_length(_vector_length), c(*c_ptr) {
     c.cleanup_copy();
   };
 
   KOKKOS_INLINE_FUNCTION
-  void operator()(const int ii, int &m_fill, const bool &final) const {
+  void operator()(const int ii, bigint &m_fill, const bool &final) const {
     c.template compute_h_item<NEIGHFLAG>(ii,m_fill,final);
   }
 
@@ -299,7 +304,7 @@ struct FixACKS2ReaxFFKokkosComputeHFunctor {
     c.template compute_h_team<NEIGHFLAG>(team, atoms_per_team, vector_length);
   }
 
-  size_t team_shmem_size(int team_size) const {
+  size_t team_shmem_size(int /*team_size*/) const {
     size_t shmem_size =
         Kokkos::View<int *, scratch_space, Kokkos::MemoryUnmanaged>::shmem_size(
             atoms_per_team) + // s_ilist
@@ -321,7 +326,7 @@ struct FixACKS2ReaxFFKokkosComputeHFunctor {
 template <class DeviceType, int NEIGHFLAG>
 struct FixACKS2ReaxFFKokkosComputeXFunctor {
   int atoms_per_team, vector_length;
-  typedef int value_type;
+  typedef bigint value_type;
   typedef Kokkos::ScratchMemorySpace<DeviceType> scratch_space;
   FixACKS2ReaxFFKokkos<DeviceType> c;
 
@@ -331,13 +336,12 @@ struct FixACKS2ReaxFFKokkosComputeXFunctor {
 
   FixACKS2ReaxFFKokkosComputeXFunctor(FixACKS2ReaxFFKokkos<DeviceType> *c_ptr,
                                   int _atoms_per_team, int _vector_length)
-      : c(*c_ptr), atoms_per_team(_atoms_per_team),
-        vector_length(_vector_length) {
+    : atoms_per_team(_atoms_per_team), vector_length(_vector_length), c(*c_ptr) {
     c.cleanup_copy();
   };
 
   KOKKOS_INLINE_FUNCTION
-  void operator()(const int ii, int &m_fill, const bool &final) const {
+  void operator()(const int ii, bigint &m_fill, const bool &final) const {
     c.template compute_x_item<NEIGHFLAG>(ii,m_fill,final);
   }
 
@@ -347,7 +351,7 @@ struct FixACKS2ReaxFFKokkosComputeXFunctor {
     c.template compute_x_team<NEIGHFLAG>(team, atoms_per_team, vector_length);
   }
 
-  size_t team_shmem_size(int team_size) const {
+  size_t team_shmem_size(int /*team_size*/) const {
     size_t shmem_size =
         Kokkos::View<int *, scratch_space, Kokkos::MemoryUnmanaged>::shmem_size(
             atoms_per_team) + // s_ilist

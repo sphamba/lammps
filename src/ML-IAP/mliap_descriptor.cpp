@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -25,9 +25,10 @@ using namespace LAMMPS_NS;
 
 MLIAPDescriptor::MLIAPDescriptor(LAMMPS *lmp) :
     Pointers(lmp), ndescriptors(0), nelements(0), elements(nullptr), cutsq(nullptr),
-    radelem(nullptr), wjelem(nullptr)
+    cutghost(nullptr), radelem(nullptr), wjelem(nullptr)
 {
   cutmax = 0.0;
+  allocated_elements = 0;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -37,6 +38,7 @@ MLIAPDescriptor::~MLIAPDescriptor()
   for (int i = 0; i < nelements; i++) delete[] elements[i];
   delete[] elements;
   memory->destroy(cutsq);
+  memory->destroy(cutghost);
   memory->destroy(radelem);
   memory->destroy(wjelem);
 }

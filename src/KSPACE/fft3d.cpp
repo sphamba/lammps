@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -72,14 +72,14 @@
 void fft_3d(FFT_DATA *in, FFT_DATA *out, int flag, struct fft_plan_3d *plan)
 {
   FFT_SCALAR norm;
-#if defined(FFT_FFTW3)
+#if defined(FFT_FFTW3) || defined(FFT_NVPL)
   FFT_SCALAR *out_ptr;
 #endif
   FFT_DATA *data,*copy;
 
   // system specific constants
 
-#if defined(FFT_FFTW3)
+#if defined(FFT_FFTW3) || defined(FFT_NVPL)
   FFTW_API(plan) theplan;
 #else
   // nothing to do for other FFTs
@@ -105,7 +105,7 @@ void fft_3d(FFT_DATA *in, FFT_DATA *out, int flag, struct fft_plan_3d *plan)
     DftiComputeForward(plan->handle_fast,data);
   else
     DftiComputeBackward(plan->handle_fast,data);
-#elif defined(FFT_FFTW3)
+#elif defined(FFT_FFTW3) || defined(FFT_NVPL)
   if (flag == 1)
     theplan=plan->plan_fast_forward;
   else
@@ -139,7 +139,7 @@ void fft_3d(FFT_DATA *in, FFT_DATA *out, int flag, struct fft_plan_3d *plan)
     DftiComputeForward(plan->handle_mid,data);
   else
     DftiComputeBackward(plan->handle_mid,data);
-#elif defined(FFT_FFTW3)
+#elif defined(FFT_FFTW3) || defined(FFT_NVPL)
   if (flag == 1)
     theplan=plan->plan_mid_forward;
   else
@@ -173,7 +173,7 @@ void fft_3d(FFT_DATA *in, FFT_DATA *out, int flag, struct fft_plan_3d *plan)
     DftiComputeForward(plan->handle_slow,data);
   else
     DftiComputeBackward(plan->handle_slow,data);
-#elif defined(FFT_FFTW3)
+#elif defined(FFT_FFTW3) || defined(FFT_NVPL)
   if (flag == 1)
     theplan=plan->plan_slow_forward;
   else
@@ -203,15 +203,16 @@ void fft_3d(FFT_DATA *in, FFT_DATA *out, int flag, struct fft_plan_3d *plan)
   if (flag == -1 && plan->scaled) {
     norm = plan->norm;
     const int num = plan->normnum;
-#if defined(FFT_FFTW3)
+#if defined(FFT_FFTW3) || defined(FFT_NVPL)
     out_ptr = (FFT_SCALAR *)out;
 #endif
     for (int i = 0; i < num; i++) {
-#if defined(FFT_FFTW3)
+#if defined(FFT_FFTW3) || defined(FFT_NVPL)
       *(out_ptr++) *= norm;
       *(out_ptr++) *= norm;
 #elif defined(FFT_MKL)
-      out[i] *= norm;
+      out[i].real *= norm;
+      out[i].imag *= norm;
 #else  /* FFT_KISS */
       out[i].re *= norm;
       out[i].im *= norm;
@@ -514,7 +515,7 @@ struct fft_plan_3d *fft_3d_create_plan(
 #endif
   DftiCommitDescriptor(plan->handle_slow);
 
-#elif defined(FFT_FFTW3)
+#elif defined(FFT_FFTW3) || defined(FFT_NVPL)
 #if defined(FFT_FFTW_THREADS)
   if (nthreads > 1) {
     FFTW_API(init_threads)();
@@ -612,7 +613,7 @@ void fft_3d_destroy_plan(struct fft_plan_3d *plan)
   DftiFreeDescriptor(&(plan->handle_fast));
   DftiFreeDescriptor(&(plan->handle_mid));
   DftiFreeDescriptor(&(plan->handle_slow));
-#elif defined(FFT_FFTW3)
+#elif defined(FFT_FFTW3) || defined(FFT_NVPL)
   FFTW_API(destroy_plan)(plan->plan_slow_forward);
   FFTW_API(destroy_plan)(plan->plan_slow_backward);
   FFTW_API(destroy_plan)(plan->plan_mid_forward);
@@ -713,7 +714,7 @@ void fft_1d_only(FFT_DATA *data, int nsize, int flag, struct fft_plan_3d *plan)
 {
   int i,num;
   FFT_SCALAR norm;
-#if defined(FFT_FFTW3)
+#if defined(FFT_FFTW3) || defined(FFT_NVPL)
   FFT_SCALAR *data_ptr;
 #endif
 
@@ -732,7 +733,7 @@ void fft_1d_only(FFT_DATA *data, int nsize, int flag, struct fft_plan_3d *plan)
 // fftw3 and Dfti in MKL encode the number of transforms
 // into the plan, so we cannot operate on a smaller data set
 
-#if defined(FFT_MKL) || defined(FFT_FFTW3)
+#if defined(FFT_MKL) || defined(FFT_FFTW3) || defined(FFT_NVPL)
   if ((total1 > nsize) || (total2 > nsize) || (total3 > nsize))
     return;
 #endif
@@ -753,7 +754,7 @@ void fft_1d_only(FFT_DATA *data, int nsize, int flag, struct fft_plan_3d *plan)
     DftiComputeBackward(plan->handle_mid,data);
     DftiComputeBackward(plan->handle_slow,data);
   }
-#elif defined(FFT_FFTW3)
+#elif defined(FFT_FFTW3) || defined(FFT_NVPL)
   FFTW_API(plan) theplan;
   if (flag == 1)
     theplan=plan->plan_fast_forward;
@@ -794,15 +795,16 @@ void fft_1d_only(FFT_DATA *data, int nsize, int flag, struct fft_plan_3d *plan)
   if (flag == -1 && plan->scaled) {
     norm = plan->norm;
     num = MIN(plan->normnum,nsize);
-#if defined(FFT_FFTW3)
+#if defined(FFT_FFTW3) || defined(FFT_NVPL)
     data_ptr = (FFT_SCALAR *)data;
 #endif
     for (i = 0; i < num; i++) {
-#if defined(FFT_FFTW3)
+#if defined(FFT_FFTW3) || defined(FFT_NVPL)
       *(data_ptr++) *= norm;
       *(data_ptr++) *= norm;
 #elif defined(FFT_MKL)
-      data[i] *= norm;
+      data[i].real *= norm;
+      data[i].imag *= norm;
 #else
       data[i].re *= norm;
       data[i].im *= norm;

@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -18,14 +18,16 @@
 
 #include "atom.h"
 #include "comm.h"
+#include "constants_oxdna.h"
 #include "error.h"
 #include "force.h"
 #include "memory.h"
 #include "neighbor.h"
+#include "potential_file_reader.h"
 #include "update.h"
 
-#include "atom_vec_ellipsoid.h"
 #include "math_extra.h"
+#include "pair.h"
 
 #include <cmath>
 
@@ -49,7 +51,7 @@ BondOxdnaFene::~BondOxdnaFene()
 void BondOxdnaFene::compute_interaction_sites(double e1[3], double /*e2*/[3], double /*e3*/[3],
                                               double r[3]) const
 {
-  constexpr double d_cs = -0.4;
+  double d_cs = ConstantsOxdna::get_d_cs();
 
   r[0] = d_cs * e1[0];
   r[1] = d_cs * e1[1];
@@ -146,31 +148,34 @@ void BondOxdnaFene::ev_tally_xyz(int i, int j, int nlocal, int newton_bond, doub
 void BondOxdnaFene::compute(int eflag, int vflag)
 {
   int a, b, in, type;
-  double delf[3], delta[3], deltb[3];    // force, torque increment;;
+  double delf[3], delta[3], deltb[3];    // force, torque increment
   double delr[3], ebond, fbond;
   double rsq, Deltasq, rlogarg;
   double r, rr0, rr0sq;
   // vectors COM-backbone site in lab frame
   double ra_cs[3], rb_cs[3];
-
-  double *qa, ax[3], ay[3], az[3];
-  double *qb, bx[3], by[3], bz[3];
+  // Cartesian unit vectors in lab frame
+  double ax[3], ay[3], az[3];
+  double bx[3], by[3], bz[3];
 
   double **x = atom->x;
   double **f = atom->f;
   double **torque = atom->torque;
-
-  AtomVecEllipsoid *avec = (AtomVecEllipsoid *) atom->style_match("ellipsoid");
-  AtomVecEllipsoid::Bonus *bonus = avec->bonus;
-  int *ellipsoid = atom->ellipsoid;
 
   int **bondlist = neighbor->bondlist;
   int nbondlist = neighbor->nbondlist;
   int nlocal = atom->nlocal;
   int newton_bond = force->newton_bond;
 
+  const double rlogarg_min = 0.2;
   ebond = 0.0;
   ev_init(eflag, vflag);
+
+  // n(x/y/z)_xtrct = extracted local unit vectors in lab frame from oxdna_excv
+  int dim;
+  nx_xtrct = (double **) force->pair->extract("nx", dim);
+  ny_xtrct = (double **) force->pair->extract("ny", dim);
+  nz_xtrct = (double **) force->pair->extract("nz", dim);
 
   // loop over FENE bonds
 
@@ -180,10 +185,24 @@ void BondOxdnaFene::compute(int eflag, int vflag)
     b = bondlist[in][0];
     type = bondlist[in][2];
 
-    qa = bonus[ellipsoid[a]].quat;
-    MathExtra::q_to_exyz(qa, ax, ay, az);
-    qb = bonus[ellipsoid[b]].quat;
-    MathExtra::q_to_exyz(qb, bx, by, bz);
+    ax[0] = nx_xtrct[a][0];
+    ax[1] = nx_xtrct[a][1];
+    ax[2] = nx_xtrct[a][2];
+    ay[0] = ny_xtrct[a][0];
+    ay[1] = ny_xtrct[a][1];
+    ay[2] = ny_xtrct[a][2];
+    az[0] = nz_xtrct[a][0];
+    az[1] = nz_xtrct[a][1];
+    az[2] = nz_xtrct[a][2];
+    bx[0] = nx_xtrct[b][0];
+    bx[1] = nx_xtrct[b][1];
+    bx[2] = nx_xtrct[b][2];
+    by[0] = ny_xtrct[b][0];
+    by[1] = ny_xtrct[b][1];
+    by[2] = ny_xtrct[b][2];
+    bz[0] = nz_xtrct[b][0];
+    bz[1] = nz_xtrct[b][1];
+    bz[2] = nz_xtrct[b][2];
 
     // vector COM-backbone site a and b
     compute_interaction_sites(ax, ay, az, ra_cs);
@@ -201,24 +220,44 @@ void BondOxdnaFene::compute(int eflag, int vflag)
     Deltasq = Delta[type] * Delta[type];
     rlogarg = 1.0 - rr0sq / Deltasq;
 
-    // if r -> Delta, then rlogarg < 0.0 which is an error
-    // issue a warning and reset rlogarg = epsilon
-    // if r > 2*Delta something serious is wrong, abort
+    // energy
+    if (eflag) {
+      ebond = -0.5 * k[type] * log(rlogarg);
+    }
 
-    if (rlogarg < 0.1) {
+    // switching to capped force for r-r0 -> Delta at
+    // r > r_max = r0 + Delta*sqrt(1-rlogarg) OR
+    // r < r_min = r0 - Delta*sqrt(1-rlogarg)
+    if (rlogarg < rlogarg_min) {
+      // issue warning, reset rlogarg and rr0 to cap force
       error->warning(FLERR, "FENE bond too long: {} {} {} {}", update->ntimestep, atom->tag[a],
                      atom->tag[b], r);
-      rlogarg = 0.1;
+      rlogarg = rlogarg_min;
+
+      // if overstretched F(r)=F(r_max)=F_max, E(r)=E(r_max)+F_max*(r-r_max)
+      if (r > r0[type]) {
+        rr0 =  Delta[type]*sqrt(1.0-rlogarg);
+        // energy
+        if (eflag) {
+          ebond = -0.5 * k[type] * log(rlogarg) + k[type] * sqrt(1.0-rlogarg) / rlogarg / Delta[type] *
+                  (r - r0[type] - Delta[type] * sqrt(1.0-rlogarg));
+        }
+      }
+      // if overcompressed F(r)=F(r_min)=F_max, E(r)=E(r_min)+F_max*(r_min-r)
+      else if (r < r0[type]) {
+        rr0 = -Delta[type]*sqrt(1.0-rlogarg);
+        // energy
+        if (eflag) {
+          ebond = -0.5 * k[type] * log(rlogarg) + k[type] * sqrt(1.0-rlogarg) / rlogarg / Delta[type] *
+                  (r0[type] - Delta[type] * sqrt(1.0-rlogarg) - r);
+        }
+      }
     }
 
     fbond = -k[type] * rr0 / rlogarg / Deltasq / r;
     delf[0] = delr[0] * fbond;
     delf[1] = delr[1] * fbond;
     delf[2] = delr[2] * fbond;
-
-    // energy
-
-    if (eflag) { ebond = -0.5 * k[type] * log(rlogarg); }
 
     // apply force and torque to each of 2 atoms
 
@@ -279,15 +318,51 @@ void BondOxdnaFene::allocate()
 
 void BondOxdnaFene::coeff(int narg, char **arg)
 {
-  if (narg != 4) error->all(FLERR, "Incorrect args for bond coefficients in oxdna/fene");
+  if (narg != 2 && narg != 4) error->all(FLERR, "Incorrect args for bond coefficients in oxdna/fene" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo, ihi;
   utils::bounds(FLERR, arg[0], 1, atom->nbondtypes, ilo, ihi, error);
 
-  double k_one = utils::numeric(FLERR, arg[1], false, lmp);
-  double Delta_one = utils::numeric(FLERR, arg[2], false, lmp);
-  double r0_one = utils::numeric(FLERR, arg[3], false, lmp);
+  double k_one;
+  double Delta_one;
+  double r0_one;
+
+  if (narg == 4) {
+    k_one = utils::numeric(FLERR, arg[1], false, lmp);
+    Delta_one = utils::numeric(FLERR, arg[2], false, lmp);
+    r0_one = utils::numeric(FLERR, arg[3], false, lmp);
+  } else {
+    if (comm->me == 0) { // read values from potential file
+      PotentialFileReader reader(lmp, arg[1], "oxdna potential", " (fene)");
+      char * line;
+      std::string iloc, potential_name;
+
+      while ((line = reader.next_line())) {
+        try {
+          ValueTokenizer values(line);
+          iloc = values.next_string();
+          potential_name = values.next_string();
+          if (iloc == arg[0] && potential_name == "fene") {
+            k_one = values.next_double();
+            Delta_one = values.next_double();
+            r0_one = values.next_double();
+
+            break;
+          } else continue;
+        } catch (std::exception &e) {
+          error->one(FLERR, "Problem parsing oxDNA potential file: {}", e.what());
+        }
+      }
+      if ((iloc != arg[0]) || (potential_name != "fene"))
+        error->one(FLERR, "No corresponding fene potential found in file {} for bond type {}",
+                   arg[1], arg[0]);
+    }
+
+    MPI_Bcast(&k_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&Delta_one, 1, MPI_DOUBLE, 0, world);
+    MPI_Bcast(&r0_one, 1, MPI_DOUBLE, 0, world);
+  }
 
   int count = 0;
 
@@ -299,7 +374,7 @@ void BondOxdnaFene::coeff(int narg, char **arg)
     count++;
   }
 
-  if (count == 0) error->all(FLERR, "Incorrect args for bond coefficients in oxdna/fene");
+  if (count == 0) error->all(FLERR, "Incorrect args for bond coefficients in oxdna/fene" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------

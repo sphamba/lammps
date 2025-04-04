@@ -6,7 +6,7 @@ fix box/relax command
 Syntax
 """"""
 
-.. parsed-literal::
+.. code-block:: LAMMPS
 
    fix ID group-ID box/relax keyword value ...
 
@@ -118,7 +118,7 @@ displaced by the same amount, different on each iteration.
    all.  Also note that if the box shape tilts to an extreme shape,
    LAMMPS will run less efficiently, due to the large volume of
    communication needed to acquire ghost atoms around a processor's
-   irregular-shaped sub-domain.  For extreme values of tilt, LAMMPS may
+   irregular-shaped subdomain.  For extreme values of tilt, LAMMPS may
    also lose atoms and generate an error.
 
 .. note::
@@ -159,10 +159,7 @@ these 4 keywords:
 
 .. parsed-literal::
 
-   x Ptarget
-   y Ptarget
-   z Ptarget
-   couple xyz
+   x Ptarget y Ptarget z Ptarget couple xyz
 
 The keyword *aniso* means *x*, *y*, and *z* dimensions are controlled
 independently using the *Pxx*, *Pyy*, and *Pzz* components of the
@@ -172,10 +169,7 @@ keywords:
 
 .. parsed-literal::
 
-   x Ptarget
-   y Ptarget
-   z Ptarget
-   couple none
+   x Ptarget y Ptarget z Ptarget couple none
 
 The keyword *tri* means *x*, *y*, *z*, *xy*, *xz*, and *yz* dimensions
 are controlled independently using their individual stress components
@@ -185,13 +179,7 @@ these 7 keywords:
 
 .. parsed-literal::
 
-   x Ptarget
-   y Ptarget
-   z Ptarget
-   xy 0.0
-   yz 0.0
-   xz 0.0
-   couple none
+   x Ptarget y Ptarget z Ptarget xy 0.0 yz 0.0 xz 0.0 couple none
 
 ----------
 

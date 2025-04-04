@@ -1,46 +1,18 @@
-/*
 //@HEADER
 // ************************************************************************
 //
-//                        Kokkos v. 3.0
-//       Copyright (2020) National Technology & Engineering
+//                        Kokkos v. 4.0
+//       Copyright (2022) National Technology & Engineering
 //               Solutions of Sandia, LLC (NTESS).
 //
 // Under the terms of Contract DE-NA0003525 with NTESS,
 // the U.S. Government retains certain rights in this software.
 //
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
+// Part of Kokkos, under the Apache License v2.0 with LLVM Exceptions.
+// See https://kokkos.org/LICENSE for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY NTESS "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL NTESS OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Christian R. Trott (crtrott@sandia.gov)
-//
-// ************************************************************************
 //@HEADER
-*/
 
 #ifndef KOKKOS_SHARED_ALLOC_HPP
 #define KOKKOS_SHARED_ALLOC_HPP
@@ -51,27 +23,6 @@
 
 #include <cstdint>
 #include <string>
-
-#if defined(KOKKOS_ENABLE_OPENMPTARGET)
-// Base function.
-static constexpr bool kokkos_omp_on_host() { return true; }
-#if defined(KOKKOS_COMPILER_PGI)
-#define KOKKOS_IMPL_IF_ON_HOST if (!__builtin_is_device_code())
-#else
-// Note: OpenMPTarget enforces C++17 at configure time
-#pragma omp begin declare variant match(device = {kind(host)})
-static constexpr bool kokkos_omp_on_host() { return true; }
-#pragma omp end declare variant
-
-#pragma omp begin declare variant match(device = {kind(nohost)})
-static constexpr bool kokkos_omp_on_host() { return false; }
-#pragma omp end declare variant
-
-#define KOKKOS_IMPL_IF_ON_HOST if constexpr (kokkos_omp_on_host())
-#endif
-#else
-#define KOKKOS_IMPL_IF_ON_HOST if (true)
-#endif
 
 namespace Kokkos {
 namespace Impl {
@@ -86,8 +37,13 @@ class SharedAllocationHeader {
  private:
   using Record = SharedAllocationRecord<void, void>;
 
+#if defined(KOKKOS_ARCH_AMD_GPU)
+  static constexpr unsigned maximum_label_length =
+      (1u << 8 /* 256 */) - sizeof(Record*);
+#else
   static constexpr unsigned maximum_label_length =
       (1u << 7 /* 128 */) - sizeof(Record*);
+#endif
 
   template <class, class>
   friend class SharedAllocationRecord;
@@ -95,6 +51,9 @@ class SharedAllocationHeader {
   friend class SharedAllocationRecordCommon;
   template <class>
   friend class HostInaccessibleSharedAllocationRecordCommon;
+  friend void fill_host_accessible_header_info(
+      SharedAllocationRecord<void, void>*, SharedAllocationHeader&,
+      std::string const&);
 
   Record* m_record;
   char m_label[maximum_label_length];
@@ -102,9 +61,9 @@ class SharedAllocationHeader {
  public:
   /* Given user memory get pointer to the header */
   KOKKOS_INLINE_FUNCTION static const SharedAllocationHeader* get_header(
-      void* alloc_ptr) {
-    return reinterpret_cast<SharedAllocationHeader*>(
-        reinterpret_cast<char*>(alloc_ptr) - sizeof(SharedAllocationHeader));
+      void const* alloc_ptr) {
+    return reinterpret_cast<SharedAllocationHeader const*>(
+        static_cast<char const*>(alloc_ptr) - sizeof(SharedAllocationHeader));
   }
 
   KOKKOS_INLINE_FUNCTION
@@ -114,8 +73,13 @@ class SharedAllocationHeader {
 template <>
 class SharedAllocationRecord<void, void> {
  protected:
+#if defined(KOKKOS_ARCH_AMD_GPU)
+  static_assert(sizeof(SharedAllocationHeader) == (1u << 8 /* 256 */),
+                "sizeof(SharedAllocationHeader) != 256");
+#else
   static_assert(sizeof(SharedAllocationHeader) == (1u << 7 /* 128 */),
                 "sizeof(SharedAllocationHeader) != 128");
+#endif
 
   template <class, class>
   friend class SharedAllocationRecord;
@@ -135,10 +99,11 @@ class SharedAllocationRecord<void, void> {
   SharedAllocationRecord* m_next;
 #endif
   int m_count;
+  std::string m_label;
 
-  SharedAllocationRecord(SharedAllocationRecord&&)      = delete;
-  SharedAllocationRecord(const SharedAllocationRecord&) = delete;
-  SharedAllocationRecord& operator=(SharedAllocationRecord&&) = delete;
+  SharedAllocationRecord(SharedAllocationRecord&&)                 = delete;
+  SharedAllocationRecord(const SharedAllocationRecord&)            = delete;
+  SharedAllocationRecord& operator=(SharedAllocationRecord&&)      = delete;
   SharedAllocationRecord& operator=(const SharedAllocationRecord&) = delete;
 
   /**\brief  Construct and insert into 'arg_root' tracking set.
@@ -149,66 +114,58 @@ class SharedAllocationRecord<void, void> {
       SharedAllocationRecord* arg_root,
 #endif
       SharedAllocationHeader* arg_alloc_ptr, size_t arg_alloc_size,
-      function_type arg_dealloc);
+      function_type arg_dealloc, const std::string& label);
  private:
-  static KOKKOS_THREAD_LOCAL int t_tracking_enabled;
+  static inline thread_local int t_tracking_enabled = 1;
 
  public:
   virtual std::string get_label() const { return std::string("Unmanaged"); }
 
-#ifdef KOKKOS_IMPL_ENABLE_OVERLOAD_HOST_DEVICE
-  /* Device tracking_enabled -- always disabled */
-  KOKKOS_IMPL_DEVICE_FUNCTION
-  static int tracking_enabled() { return 0; }
+#if defined(__EDG__)
+#pragma push
+#pragma diag_suppress implicit_return_from_non_void_function
 #endif
-
-  KOKKOS_IMPL_HOST_FUNCTION
-  static int tracking_enabled() {
-    KOKKOS_IMPL_IF_ON_HOST { return t_tracking_enabled; }
-    else {
-      return 0;
-    }
+  static KOKKOS_FUNCTION int tracking_enabled() {
+    KOKKOS_IF_ON_HOST(return t_tracking_enabled;)
+    KOKKOS_IF_ON_DEVICE(return 0;)
   }
+#if defined(__EDG__)
+#pragma pop
+#endif
 
   /**\brief A host process thread claims and disables the
    *        shared allocation tracking flag.
    */
-  static void tracking_disable() {
-    KOKKOS_IMPL_IF_ON_HOST { t_tracking_enabled = 0; }
-  }
+  static void tracking_disable() { t_tracking_enabled = 0; }
 
   /**\brief A host process thread releases and enables the
    *        shared allocation tracking flag.
    */
-  static void tracking_enable() {
-    KOKKOS_IMPL_IF_ON_HOST { t_tracking_enabled = 1; }
-  }
+  static void tracking_enable() { t_tracking_enabled = 1; }
 
   virtual ~SharedAllocationRecord() = default;
 
   SharedAllocationRecord()
       : m_alloc_ptr(nullptr),
         m_alloc_size(0),
-        m_dealloc(nullptr)
+        m_dealloc(nullptr),
 #ifdef KOKKOS_ENABLE_DEBUG
-        ,
         m_root(this),
         m_prev(this),
-        m_next(this)
+        m_next(this),
 #endif
-        ,
         m_count(0) {
   }
 
   static constexpr unsigned maximum_label_length =
       SharedAllocationHeader::maximum_label_length;
 
-  KOKKOS_INLINE_FUNCTION
+  KOKKOS_FUNCTION
   const SharedAllocationHeader* head() const { return m_alloc_ptr; }
 
   /* User's memory begins at the end of the header */
-  KOKKOS_INLINE_FUNCTION
-  void* data() const { return reinterpret_cast<void*>(m_alloc_ptr + 1); }
+  KOKKOS_FUNCTION
+  void* data() const { return static_cast<void*>(m_alloc_ptr + 1); }
 
   /* User's memory begins at the end of the header */
   size_t size() const { return m_alloc_size - sizeof(SharedAllocationHeader); }
@@ -216,25 +173,11 @@ class SharedAllocationRecord<void, void> {
   /* Cannot be 'constexpr' because 'm_count' is volatile */
   int use_count() const { return *static_cast<const volatile int*>(&m_count); }
 
-#ifdef KOKKOS_IMPL_ENABLE_OVERLOAD_HOST_DEVICE
-  /* Device tracking_enabled -- always disabled */
-  KOKKOS_IMPL_DEVICE_FUNCTION
-  static void increment(SharedAllocationRecord*){};
-#endif
-
   /* Increment use count */
-  KOKKOS_IMPL_HOST_FUNCTION
   static void increment(SharedAllocationRecord*);
-
-#ifdef KOKKOS_IMPL_ENABLE_OVERLOAD_HOST_DEVICE
-  /* Device tracking_enabled -- always disabled */
-  KOKKOS_IMPL_DEVICE_FUNCTION
-  static void decrement(SharedAllocationRecord*){};
-#endif
 
   /* Decrement use count. If 1->0 then remove from the tracking list and invoke
    * m_dealloc */
-  KOKKOS_IMPL_HOST_FUNCTION
   static SharedAllocationRecord* decrement(SharedAllocationRecord*);
 
   /* Given a root record and data pointer find the record */
@@ -254,22 +197,63 @@ class SharedAllocationRecord<void, void> {
 };
 
 template <class MemorySpace>
+SharedAllocationHeader* checked_allocation_with_header(MemorySpace const& space,
+                                                       std::string const& label,
+                                                       size_t alloc_size) {
+  return reinterpret_cast<SharedAllocationHeader*>(space.allocate(
+      label.c_str(), alloc_size + sizeof(SharedAllocationHeader), alloc_size));
+}
+
+template <class ExecutionSpace, class MemorySpace>
+SharedAllocationHeader* checked_allocation_with_header(
+    ExecutionSpace const& exec_space, MemorySpace const& space,
+    std::string const& label, size_t alloc_size) {
+  return reinterpret_cast<SharedAllocationHeader*>(
+      space.allocate(exec_space, label.c_str(),
+                     alloc_size + sizeof(SharedAllocationHeader), alloc_size));
+}
+
+void fill_host_accessible_header_info(SharedAllocationHeader& arg_header,
+                                      std::string const& arg_label);
+
+template <class MemorySpace>
 class SharedAllocationRecordCommon : public SharedAllocationRecord<void, void> {
  private:
   using derived_t     = SharedAllocationRecord<MemorySpace, void>;
   using record_base_t = SharedAllocationRecord<void, void>;
-  derived_t& self() { return *static_cast<derived_t*>(this); }
-  derived_t const& self() const { return *static_cast<derived_t const*>(this); }
 
  protected:
   using record_base_t::record_base_t;
 
-  void _fill_host_accessible_header_info(SharedAllocationHeader& arg_header,
-                                         std::string const& arg_label);
+  MemorySpace m_space;
+
+#ifdef KOKKOS_ENABLE_DEBUG
+  static record_base_t s_root_record;
+#endif
 
   static void deallocate(record_base_t* arg_rec);
 
  public:
+  ~SharedAllocationRecordCommon();
+  template <class ExecutionSpace>
+  SharedAllocationRecordCommon(
+      ExecutionSpace const& exec, MemorySpace const& space,
+      std::string const& label, std::size_t alloc_size,
+      record_base_t::function_type dealloc = &deallocate)
+      : SharedAllocationRecord<void, void>(
+#ifdef KOKKOS_ENABLE_DEBUG
+            &s_root_record,
+#endif
+            checked_allocation_with_header(exec, space, label, alloc_size),
+            sizeof(SharedAllocationHeader) + alloc_size, dealloc, label),
+        m_space(space) {
+    auto& header = *SharedAllocationRecord<void, void>::m_alloc_ptr;
+    fill_host_accessible_header_info(this, header, label);
+  }
+  SharedAllocationRecordCommon(
+      MemorySpace const& space, std::string const& label, std::size_t size,
+      record_base_t::function_type dealloc = &deallocate);
+
   static auto allocate(MemorySpace const& arg_space,
                        std::string const& arg_label, size_t arg_alloc_size)
       -> derived_t*;
@@ -277,39 +261,181 @@ class SharedAllocationRecordCommon : public SharedAllocationRecord<void, void> {
   static void* allocate_tracked(MemorySpace const& arg_space,
                                 std::string const& arg_alloc_label,
                                 size_t arg_alloc_size);
-  /**\brief  Reallocate tracked memory in the space */
-  static void deallocate_tracked(void* arg_alloc_ptr);
   /**\brief  Deallocate tracked memory in the space */
+  static void deallocate_tracked(void* arg_alloc_ptr);
+  /**\brief  Reallocate tracked memory in the space
+   * \note The ExecutionSpace template parameter is used to force
+   * templatization of the method to delay its definition. Otherwise, the
+   * method would use an execution space which is not complete yet.
+   */
+  template <class ExecutionSpace = typename MemorySpace::execution_space>
   static void* reallocate_tracked(void* arg_alloc_ptr, size_t arg_alloc_size);
   static auto get_record(void* alloc_ptr) -> derived_t*;
-  std::string get_label() const;
+  std::string get_label() const override;
   static void print_records(std::ostream& s, MemorySpace const&,
                             bool detail = false);
 };
 
+/**
+ * \note This method is implemented here to prevent circular dependencies.
+ */
+template <class MemorySpace>
+template <class ExecutionSpace>
+void* SharedAllocationRecordCommon<MemorySpace>::reallocate_tracked(
+    void* arg_alloc_ptr, size_t arg_alloc_size) {
+  derived_t* const r_old = derived_t::get_record(arg_alloc_ptr);
+  derived_t* const r_new =
+      allocate(r_old->m_space, r_old->get_label(), arg_alloc_size);
+
+  Kokkos::Impl::DeepCopy<MemorySpace, MemorySpace>(
+      ExecutionSpace{}, r_new->data(), r_old->data(),
+      std::min(r_old->size(), r_new->size()));
+  Kokkos::fence(std::string("SharedAllocationRecord<") + MemorySpace::name() +
+                ", void>::reallocate_tracked(): fence after copying data");
+
+  record_base_t::increment(r_new);
+  record_base_t::decrement(r_old);
+
+  return r_new->data();
+}
+
 template <class MemorySpace>
 class HostInaccessibleSharedAllocationRecordCommon
-    : public SharedAllocationRecordCommon<MemorySpace> {
+    : public SharedAllocationRecord<void, void> {
  private:
-  using base_t        = SharedAllocationRecordCommon<MemorySpace>;
   using derived_t     = SharedAllocationRecord<MemorySpace, void>;
   using record_base_t = SharedAllocationRecord<void, void>;
 
  protected:
-  using base_t::base_t;
+  using record_base_t::record_base_t;
+
+  MemorySpace m_space;
+
+#ifdef KOKKOS_ENABLE_DEBUG
+  static record_base_t s_root_record;
+#endif
+
+  static void deallocate(record_base_t* arg_rec);
 
  public:
+  ~HostInaccessibleSharedAllocationRecordCommon();
+  template <class ExecutionSpace>
+  HostInaccessibleSharedAllocationRecordCommon(
+      ExecutionSpace const& exec, MemorySpace const& space,
+      std::string const& label, std::size_t alloc_size,
+      record_base_t::function_type dealloc = &deallocate)
+      : SharedAllocationRecord<void, void>(
+#ifdef KOKKOS_ENABLE_DEBUG
+            &s_root_record,
+#endif
+            checked_allocation_with_header(exec, space, label, alloc_size),
+            sizeof(SharedAllocationHeader) + alloc_size, dealloc, label),
+        m_space(space) {
+    SharedAllocationHeader header;
+
+    fill_host_accessible_header_info(this, header, label);
+
+    Kokkos::Impl::DeepCopy<MemorySpace, HostSpace>(
+        exec, SharedAllocationRecord<void, void>::m_alloc_ptr, &header,
+        sizeof(SharedAllocationHeader));
+  }
+  HostInaccessibleSharedAllocationRecordCommon(
+      MemorySpace const& space, std::string const& label, std::size_t size,
+      record_base_t::function_type dealloc = &deallocate);
+
+  static auto allocate(MemorySpace const& arg_space,
+                       std::string const& arg_label, size_t arg_alloc_size)
+      -> derived_t*;
+  /**\brief  Allocate tracked memory in the space */
+  static void* allocate_tracked(MemorySpace const& arg_space,
+                                std::string const& arg_alloc_label,
+                                size_t arg_alloc_size);
+  /**\brief  Deallocate tracked memory in the space */
+  static void deallocate_tracked(void* arg_alloc_ptr);
+  /**\brief  Reallocate tracked memory in the space
+   * \note The ExecutionSpace template parameter is used to force
+   * templatization of the method to delay its definition. Otherwise, the
+   * method would use an execution space which is not complete yet.
+   */
+  template <class ExecutionSpace = typename MemorySpace::execution_space>
+  static void* reallocate_tracked(void* arg_alloc_ptr, size_t arg_alloc_size);
+
+  /**
+   * \note The ExecutionSpace template parameter is used to force
+   * templatization of the method to delay its definition. Otherwise, the
+   * method would use an execution space which is not complete yet.
+   */
+  template <class ExecutionSpace = Kokkos::DefaultHostExecutionSpace>
   static void print_records(std::ostream& s, MemorySpace const&,
                             bool detail = false);
   static auto get_record(void* alloc_ptr) -> derived_t*;
-  std::string get_label() const;
+  std::string get_label() const override;
 };
 
-namespace {
+/**
+ * \note This method is implemented here to prevent circular dependencies.
+ */
+template <class MemorySpace>
+template <class ExecutionSpace>
+void* HostInaccessibleSharedAllocationRecordCommon<
+    MemorySpace>::reallocate_tracked(void* arg_alloc_ptr,
+                                     size_t arg_alloc_size) {
+  derived_t* const r_old = derived_t::get_record(arg_alloc_ptr);
+  derived_t* const r_new =
+      allocate(r_old->m_space, r_old->get_label(), arg_alloc_size);
+
+  Kokkos::Impl::DeepCopy<MemorySpace, MemorySpace>(
+      ExecutionSpace{}, r_new->data(), r_old->data(),
+      std::min(r_old->size(), r_new->size()));
+  Kokkos::fence(std::string("SharedAllocationRecord<") + MemorySpace::name() +
+                ", void>::reallocate_tracked(): fence after copying data");
+
+  record_base_t::increment(r_new);
+  record_base_t::decrement(r_old);
+
+  return r_new->data();
+}
+
+#ifdef KOKKOS_ENABLE_DEBUG
+template <class MemorySpace>
+SharedAllocationRecord<void, void>
+    SharedAllocationRecordCommon<MemorySpace>::s_root_record;
+
+template <class MemorySpace>
+SharedAllocationRecord<void, void>
+    HostInaccessibleSharedAllocationRecordCommon<MemorySpace>::s_root_record;
+#endif
+
+#define KOKKOS_IMPL_SHARED_ALLOCATION_SPECIALIZATION(MEMORY_SPACE)        \
+  template <>                                                             \
+  class Kokkos::Impl::SharedAllocationRecord<MEMORY_SPACE, void>          \
+      : public Kokkos::Impl::SharedAllocationRecordCommon<MEMORY_SPACE> { \
+    using SharedAllocationRecordCommon<                                   \
+        MEMORY_SPACE>::SharedAllocationRecordCommon;                      \
+  }
+
+#define KOKKOS_IMPL_HOST_INACCESSIBLE_SHARED_ALLOCATION_SPECIALIZATION(    \
+    MEMORY_SPACE)                                                          \
+  template <>                                                              \
+  class Kokkos::Impl::SharedAllocationRecord<MEMORY_SPACE, void>           \
+      : public Kokkos::Impl::HostInaccessibleSharedAllocationRecordCommon< \
+            MEMORY_SPACE> {                                                \
+    using HostInaccessibleSharedAllocationRecordCommon<                    \
+        MEMORY_SPACE>::HostInaccessibleSharedAllocationRecordCommon;       \
+  }
+
+#define KOKKOS_IMPL_SHARED_ALLOCATION_RECORD_EXPLICIT_INSTANTIATION( \
+    MEMORY_SPACE)                                                    \
+  template class Kokkos::Impl::SharedAllocationRecordCommon<MEMORY_SPACE>
+
+#define KOKKOS_IMPL_HOST_INACCESSIBLE_SHARED_ALLOCATION_RECORD_EXPLICIT_INSTANTIATION( \
+    MEMORY_SPACE)                                                                      \
+  template class Kokkos::Impl::HostInaccessibleSharedAllocationRecordCommon<           \
+      MEMORY_SPACE>
 
 /* Taking the address of this function so make sure it is unique */
 template <class MemorySpace, class DestroyFunctor>
-void deallocate(SharedAllocationRecord<void, void>* record_ptr) {
+inline void deallocate(SharedAllocationRecord<void, void>* record_ptr) {
   using base_type = SharedAllocationRecord<MemorySpace, void>;
   using this_type = SharedAllocationRecord<MemorySpace, DestroyFunctor>;
 
@@ -320,8 +446,6 @@ void deallocate(SharedAllocationRecord<void, void>* record_ptr) {
 
   delete ptr;
 }
-
-}  // namespace
 
 /*
  *  Memory space specialization of SharedAllocationRecord< Space , void >
@@ -339,6 +463,16 @@ template <class MemorySpace, class DestroyFunctor>
 class SharedAllocationRecord
     : public SharedAllocationRecord<MemorySpace, void> {
  private:
+  template <typename ExecutionSpace>
+  SharedAllocationRecord(const ExecutionSpace& execution_space,
+                         const MemorySpace& arg_space,
+                         const std::string& arg_label, const size_t arg_alloc)
+      /*  Allocate user memory as [ SharedAllocationHeader , user_memory ] */
+      : SharedAllocationRecord<MemorySpace, void>(
+            execution_space, arg_space, arg_label, arg_alloc,
+            &Kokkos::Impl::deallocate<MemorySpace, DestroyFunctor>),
+        m_destroy() {}
+
   SharedAllocationRecord(const MemorySpace& arg_space,
                          const std::string& arg_label, const size_t arg_alloc)
       /*  Allocate user memory as [ SharedAllocationHeader , user_memory ] */
@@ -347,8 +481,8 @@ class SharedAllocationRecord
             &Kokkos::Impl::deallocate<MemorySpace, DestroyFunctor>),
         m_destroy() {}
 
-  SharedAllocationRecord()                              = delete;
-  SharedAllocationRecord(const SharedAllocationRecord&) = delete;
+  SharedAllocationRecord()                                         = delete;
+  SharedAllocationRecord(const SharedAllocationRecord&)            = delete;
   SharedAllocationRecord& operator=(const SharedAllocationRecord&) = delete;
 
  public:
@@ -356,18 +490,25 @@ class SharedAllocationRecord
 
   // Allocate with a zero use count.  Incrementing the use count from zero to
   // one inserts the record into the tracking list.  Decrementing the count from
-  // one to zero removes from the trakcing list and deallocates.
+  // one to zero removes from the tracking list and deallocates.
   KOKKOS_INLINE_FUNCTION static SharedAllocationRecord* allocate(
       const MemorySpace& arg_space, const std::string& arg_label,
       const size_t arg_alloc) {
-#if defined(KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST)
-    return new SharedAllocationRecord(arg_space, arg_label, arg_alloc);
-#else
-    (void)arg_space;
-    (void)arg_label;
-    (void)arg_alloc;
-    return (SharedAllocationRecord*)0;
-#endif
+    KOKKOS_IF_ON_HOST(
+        (return new SharedAllocationRecord(arg_space, arg_label, arg_alloc);))
+    KOKKOS_IF_ON_DEVICE(
+        ((void)arg_space; (void)arg_label; (void)arg_alloc; return nullptr;))
+  }
+
+  template <typename ExecutionSpace>
+  KOKKOS_INLINE_FUNCTION static SharedAllocationRecord* allocate(
+      const ExecutionSpace& exec_space, const MemorySpace& arg_space,
+      const std::string& arg_label, const size_t arg_alloc) {
+    KOKKOS_IF_ON_HOST(
+        (return new SharedAllocationRecord(exec_space, arg_space, arg_label,
+                                           arg_alloc);))
+    KOKKOS_IF_ON_DEVICE(((void)exec_space; (void)arg_space; (void)arg_label;
+                         (void)arg_alloc; return nullptr;))
   }
 };
 
@@ -390,51 +531,26 @@ union SharedAllocationTracker {
   // pressure on compiler optimization by reducing
   // number of symbols and inline functions.
 
-#if defined(KOKKOS_IMPL_ENABLE_OVERLOAD_HOST_DEVICE)
-
-#define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_ENABLED Record::tracking_enabled()
-
-#ifdef KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST
-#define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_CONDITION \
-  (!(m_record_bits & DO_NOT_DEREF_FLAG))
+#ifdef KOKKOS_ENABLE_IMPL_REF_COUNT_BRANCH_UNLIKELY
+#define KOKKOS_IMPL_BRANCH_PROB KOKKOS_IMPL_ATTRIBUTE_UNLIKELY
 #else
-#define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_CONDITION (0)
+#define KOKKOS_IMPL_BRANCH_PROB
 #endif
 
 #define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_INCREMENT \
-  if (KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_CONDITION)  \
-    KOKKOS_IMPL_IF_ON_HOST Record::increment(m_record);
+  KOKKOS_IF_ON_HOST(                                    \
+      (if (!(m_record_bits & DO_NOT_DEREF_FLAG))        \
+           KOKKOS_IMPL_BRANCH_PROB { Record::increment(m_record); }))
 
 #define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_DECREMENT \
-  if (KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_CONDITION)  \
-    KOKKOS_IMPL_IF_ON_HOST Record::decrement(m_record);
-
-#elif defined(KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST)
-
-#define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_ENABLED Record::tracking_enabled()
-
-#define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_INCREMENT \
-  if (!(m_record_bits & DO_NOT_DEREF_FLAG))             \
-    KOKKOS_IMPL_IF_ON_HOST Record::increment(m_record);
-
-#define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_DECREMENT \
-  if (!(m_record_bits & DO_NOT_DEREF_FLAG))             \
-    KOKKOS_IMPL_IF_ON_HOST Record::decrement(m_record);
-
-#else
-
-#define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_ENABLED 0
-
-#define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_INCREMENT /* */
-
-#define KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_DECREMENT /* */
-
-#endif
+  KOKKOS_IF_ON_HOST(                                    \
+      (if (!(m_record_bits & DO_NOT_DEREF_FLAG))        \
+           KOKKOS_IMPL_BRANCH_PROB { Record::decrement(m_record); }))
 
 #define KOKKOS_IMPL_SHARED_ALLOCATION_CARRY_RECORD_BITS(rhs,               \
                                                         override_tracking) \
   (((!override_tracking) || (rhs.m_record_bits & DO_NOT_DEREF_FLAG) ||     \
-    (!KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_ENABLED))                      \
+    (!Record::tracking_enabled()))                                         \
        ? rhs.m_record_bits | DO_NOT_DEREF_FLAG                             \
        : rhs.m_record_bits)
 
@@ -448,8 +564,8 @@ union SharedAllocationTracker {
   }
 
   template <class MemorySpace>
-  constexpr SharedAllocationRecord<MemorySpace, void>* get_record() const
-      noexcept {
+  constexpr SharedAllocationRecord<MemorySpace, void>* get_record()
+      const noexcept {
     return (m_record_bits & DO_NOT_DEREF_FLAG)
                ? nullptr
                : static_cast<SharedAllocationRecord<MemorySpace, void>*>(
@@ -467,17 +583,14 @@ union SharedAllocationTracker {
 
   KOKKOS_INLINE_FUNCTION
   int use_count() const {
-#if defined(KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST)
-    Record* const tmp =
-        reinterpret_cast<Record*>(m_record_bits & ~DO_NOT_DEREF_FLAG);
-    return (tmp ? tmp->use_count() : 0);
-#else
-    return 0;
-#endif
+    KOKKOS_IF_ON_HOST((Record* const tmp = reinterpret_cast<Record*>(
+                           m_record_bits & ~DO_NOT_DEREF_FLAG);
+                       return (tmp ? tmp->use_count() : 0);))
+
+    KOKKOS_IF_ON_DEVICE((return 0;))
   }
 
-  KOKKOS_INLINE_FUNCTION
-  bool has_record() const {
+  KOKKOS_INLINE_FUNCTION bool has_record() const {
     return (m_record_bits & (~DO_NOT_DEREF_FLAG)) != 0;
   }
 
@@ -506,6 +619,7 @@ union SharedAllocationTracker {
 
   KOKKOS_FORCEINLINE_FUNCTION
   SharedAllocationTracker& operator=(SharedAllocationTracker&& rhs) {
+    if (&rhs == this) return *this;
     auto swap_tmp     = m_record_bits;
     m_record_bits     = rhs.m_record_bits;
     rhs.m_record_bits = swap_tmp;
@@ -529,6 +643,7 @@ union SharedAllocationTracker {
         KOKKOS_FORCEINLINE_FUNCTION SharedAllocationTracker
         &
         operator=(const SharedAllocationTracker& rhs) {
+    if (&rhs == this) return *this;
     // If this is tracking then must decrement
     KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_DECREMENT
     m_record_bits = KOKKOS_IMPL_SHARED_ALLOCATION_CARRY_RECORD_BITS(rhs, true);
@@ -540,7 +655,7 @@ union SharedAllocationTracker {
    *  are the result of deconstructing the
    *  KOKKOS_IMPL_SHARED_ALLOCATION_CARRY_RECORD_BITS macro.  This
    *  allows the caller to do the check for tracking enabled and managed
-   *  apart from the assignement of the record because the tracking
+   *  apart from the assignment of the record because the tracking
    *  enabled / managed question may be important for other tasks as well
    */
 
@@ -577,11 +692,43 @@ union SharedAllocationTracker {
     KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_INCREMENT
   }
 
-#undef KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_ENABLED
 #undef KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_INCREMENT
 #undef KOKKOS_IMPL_SHARED_ALLOCATION_TRACKER_DECREMENT
+#undef KOKKOS_IMPL_BRANCH_PROB
 };
 
+struct SharedAllocationDisableTrackingGuard {
+  SharedAllocationDisableTrackingGuard() {
+    KOKKOS_ASSERT(
+        (Kokkos::Impl::SharedAllocationRecord<void, void>::tracking_enabled()));
+    Kokkos::Impl::SharedAllocationRecord<void, void>::tracking_disable();
+  }
+
+  SharedAllocationDisableTrackingGuard(
+      const SharedAllocationDisableTrackingGuard&) = delete;
+  SharedAllocationDisableTrackingGuard(SharedAllocationDisableTrackingGuard&&) =
+      delete;
+
+  ~SharedAllocationDisableTrackingGuard() {
+    KOKKOS_ASSERT((
+        !Kokkos::Impl::SharedAllocationRecord<void, void>::tracking_enabled()));
+    Kokkos::Impl::SharedAllocationRecord<void, void>::tracking_enable();
+  }
+  // clang-format off
+  // The old version of clang format we use is particularly egregious here
+  SharedAllocationDisableTrackingGuard& operator=(
+      const SharedAllocationDisableTrackingGuard&) = delete;
+  SharedAllocationDisableTrackingGuard& operator=(
+      SharedAllocationDisableTrackingGuard&&) = delete;
+  // clang-format on
+};
+
+template <class FunctorType, class... Args>
+inline FunctorType construct_with_shared_allocation_tracking_disabled(
+    Args&&... args) {
+  [[maybe_unused]] auto guard = SharedAllocationDisableTrackingGuard{};
+  return {std::forward<Args>(args)...};
+}
 } /* namespace Impl */
 } /* namespace Kokkos */
 #endif

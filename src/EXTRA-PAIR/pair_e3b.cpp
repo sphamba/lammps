@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -22,6 +22,7 @@
 #include "domain.h"
 #include "error.h"
 #include "force.h"
+#include "info.h"
 #include "memory.h"
 #include "neigh_list.h"
 #include "neighbor.h"
@@ -99,7 +100,7 @@ void PairE3B::compute(int eflag, int vflag)
 
   ev_init(eflag, vflag);
   //clear sumExp array
-  memset(sumExp, 0.0, nbytes);
+  memset(sumExp, 0, sizeof(double) * maxID);
 
   evdwl = 0.0;
   pvector[0] = pvector[1] = pvector[2] = pvector[3] = 0.0;
@@ -364,7 +365,6 @@ void PairE3B::allocateE3B()
   maxID = find_maxID();
   if (!natoms) error->all(FLERR, "No atoms found");
   memory->create(sumExp, maxID, "pair:sumExp");
-  nbytes = sizeof(double) * maxID;
 }
 
 /* ----------------------------------------------------------------------
@@ -374,7 +374,7 @@ void PairE3B::allocateE3B()
 void PairE3B::settings(int narg, char **arg)
 {
   if (narg != 1) error->all(FLERR, "Illegal pair_style command");
-  typeO = utils::inumeric(FLERR, arg[0], false, lmp);
+  typeO_str = arg[0];
 }
 
 /* ----------------------------------------------------------------------
@@ -387,6 +387,9 @@ void PairE3B::coeff(int narg, char **arg)
 
   //1=* 2=* 3/4=1st keyword/value
   if (narg < 4) error->all(FLERR, "There must be at least one keyword given to pair_coeff");
+
+  if (typeO_str.size() > 0)
+    typeO = utils::expand_type_int(FLERR, typeO_str, Atom::ATOM, lmp, true);
 
   // clear setflag since coeff() called once with I,J = * *
   int n = atom->ntypes;
@@ -459,7 +462,7 @@ void PairE3B::init_style()
   if (typeO < 1 || typeO > atom->ntypes) error->all(FLERR, "Invalid Otype: out of bounds");
 
   // need a half neighbor list
-  neighbor->request(this, instance_me);
+  neighbor->add_request(this);
 
   if (!force->pair_match("tip4p", false, 0))
     if (comm->me == 0)
@@ -469,40 +472,40 @@ void PairE3B::init_style()
 }
 
 static const char cite_E3B1[] =
-    "Explicit Three-Body (E3B) potential for water:\n\n"
+    "Explicit Three-Body (E3B) potential for water: doi:10.1021/jp8009468\n\n"
     "@article{kumar_water_2008,\n"
     "title = {Water Simulation Model with Explicit Three-Molecule Interactions},\n"
     "volume = {112},\n"
-    "doi = {10.1021/jp8009468},\n"
     "number = {28},\n"
-    "journal = {J Phys. Chem. B},\n"
+    "doi = {10.1021/jp8009468},\n"
+    "journal = {J.~Phys.\\ Chem.~B},\n"
     "author = {Kumar, R. and Skinner, J. L.},\n"
     "year = {2008},\n"
     "pages = {8311--8318}\n"
     "}\n\n";
 
 static const char cite_E3B2[] =
-    "Explicit Three-Body (E3B) potential for water:\n\n"
+    "Explicit Three-Body (E3B) potential for water: doi:10.1063/1.3587053\n\n"
     "@article{tainter_robust_2011,\n"
-    "title = {Robust three-body water simulation model},\n"
+    "title = {Robust Three-Body Water Simulation Model},\n"
     "volume = {134},\n"
     "doi = {10.1063/1.3587053},\n"
     "number = {18},\n"
-    "journal = {J. Chem. Phys},\n"
+    "journal = {J.~Chem.\\ Phys},\n"
     "author = {Tainter, C. J. and Pieniazek, P. A. and Lin, Y.-S. and Skinner, J. L.},\n"
     "year = {2011},\n"
     "pages = {184501}\n"
     "}\n\n";
 
 static const char cite_E3B3[] =
-    "Explicit Three-Body (E3B) potential for water:\n\n"
+    "Explicit Three-Body (E3B) potential for water: doi:10.1021/acs.jctc.5b00117\n\n"
     "@article{tainter_reparametrized_2015,\n"
     "title = {Reparametrized {E3B} (Explicit Three-Body) Water Model Using the {TIP4P/2005} Model "
     "as a Reference},\n"
     "volume = {11},\n"
     "doi = {10.1021/acs.jctc.5b00117},\n"
     "number = {5},\n"
-    "journal = {J. Chem. Theory Comput.},\n"
+    "journal = {J.~Chem.\\ Theory Comput.},\n"
     "author = {Tainter, Craig J. and Shi, Liang and Skinner, James L.},\n"
     "year = {2015},\n"
     "pages = {2268--2277}\n"
@@ -599,7 +602,9 @@ void PairE3B::presetParam(const int flag, bool &repeatFlag, double &bondL)
 //pair.cpp::init uses this to set cutsq array, used for neighboring, etc
 double PairE3B::init_one(int i, int j)
 {
-  if (setflag[i][j] == 0) error->all(FLERR, "All pair coeffs are not set");
+  if (setflag[i][j] == 0)
+    error->all(FLERR, Error::NOLASTLINE,
+               "All pair coeffs are not set. Status:\n" + Info::get_pair_coeff_status(lmp));
 
   return cutmax;
 }

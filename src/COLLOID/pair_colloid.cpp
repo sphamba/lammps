@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -18,7 +18,6 @@
 
 #include "pair_colloid.h"
 
-#include <cmath>
 #include "atom.h"
 #include "comm.h"
 #include "force.h"
@@ -27,6 +26,7 @@
 #include "memory.h"
 #include "error.h"
 
+#include <cmath>
 
 using namespace LAMMPS_NS;
 using namespace MathSpecial;
@@ -266,7 +266,7 @@ void PairColloid::settings(int narg, char **arg)
 void PairColloid::coeff(int narg, char **arg)
 {
   if (narg < 6 || narg > 7)
-    error->all(FLERR,"Incorrect args for pair coefficients");
+    error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
   if (!allocated) allocate();
 
   int ilo,ihi,jlo,jhi;
@@ -300,7 +300,7 @@ void PairColloid::coeff(int narg, char **arg)
     }
   }
 
-  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
+  if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients" + utils::errorurl(21));
 }
 
 /* ----------------------------------------------------------------------

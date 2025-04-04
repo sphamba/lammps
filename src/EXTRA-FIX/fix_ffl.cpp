@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -42,8 +42,6 @@ enum {NOBIAS,BIAS};
 enum {CONSTANT,EQUAL,ATOM};
 enum {NO_FLIP, FLIP_RESCALE, FLIP_HARD, FLIP_SOFT};
 //#define FFL_DEBUG 1
-
-#define MAXLINE 1024
 
 /* syntax for fix_ffl:
  * fix nfix id-group ffl tau Tstart Tstop seed [flip_type]
@@ -158,8 +156,8 @@ void FixFFL::init() {
   }
 
   if (utils::strmatch(update->integrate_style,"^respa")) {
-    nlevels_respa = ((Respa *) update->integrate)->nlevels;
-    step_respa = ((Respa *) update->integrate)->step;
+    nlevels_respa = (dynamic_cast<Respa *>(update->integrate))->nlevels;
+    step_respa = (dynamic_cast<Respa *>(update->integrate))->step;
   }
 
   init_ffl();
@@ -182,9 +180,9 @@ void FixFFL::setup(int vflag) {
   if (utils::strmatch(update->integrate_style,"^verlet"))
     post_force(vflag);
   else {
-    ((Respa *) update->integrate)->copy_flevel_f(nlevels_respa-1);
+    (dynamic_cast<Respa *>(update->integrate))->copy_flevel_f(nlevels_respa-1);
     post_force_respa(vflag,nlevels_respa-1,0);
-    ((Respa *) update->integrate)->copy_f_flevel(nlevels_respa-1);
+    (dynamic_cast<Respa *>(update->integrate))->copy_f_flevel(nlevels_respa-1);
   }
 }
 

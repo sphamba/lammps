@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    This software is distributed under the GNU General Public License.
 
@@ -17,6 +17,7 @@
 
 #include "atom.h"
 #include "comm.h"
+#include "error.h"
 #include "force.h"
 #include "memory.h"
 #include "neigh_list.h"
@@ -45,6 +46,7 @@ void PairEAMOMP::compute(int eflag, int vflag)
   const int nall = atom->nlocal + atom->nghost;
   const int nthreads = comm->nthreads;
   const int inum = list->inum;
+  int beyond_rhomax = 0;
 
   // grow energy and fp arrays if necessary
   // need to be atom->nmax in length
@@ -60,7 +62,7 @@ void PairEAMOMP::compute(int eflag, int vflag)
   }
 
 #if defined(_OPENMP)
-#pragma omp parallel LMP_DEFAULT_NONE LMP_SHARED(eflag,vflag)
+#pragma omp parallel LMP_DEFAULT_NONE LMP_SHARED(eflag,vflag) reduction(+:beyond_rhomax)
 #endif
   {
     int ifrom, ito, tid;
@@ -77,24 +79,34 @@ void PairEAMOMP::compute(int eflag, int vflag)
 
     if (evflag) {
       if (eflag) {
-        if (force->newton_pair) eval<1,1,1>(ifrom, ito, thr);
-        else eval<1,1,0>(ifrom, ito, thr);
+        if (force->newton_pair) eval<1,1,1>(ifrom, ito, &beyond_rhomax, thr);
+        else eval<1,1,0>(ifrom, ito, &beyond_rhomax, thr);
       } else {
-        if (force->newton_pair) eval<1,0,1>(ifrom, ito, thr);
-        else eval<1,0,0>(ifrom, ito, thr);
+        if (force->newton_pair) eval<1,0,1>(ifrom, ito, &beyond_rhomax, thr);
+        else eval<1,0,0>(ifrom, ito, &beyond_rhomax, thr);
       }
     } else {
-      if (force->newton_pair) eval<0,0,1>(ifrom, ito, thr);
-      else eval<0,0,0>(ifrom, ito, thr);
+      if (force->newton_pair) eval<0,0,1>(ifrom, ito, &beyond_rhomax, thr);
+      else eval<0,0,0>(ifrom, ito, &beyond_rhomax, thr);
     }
 
     thr->timer(Timer::PAIR);
     reduce_thr(this, eflag, vflag, thr);
   } // end of omp parallel region
+
+  if (eflag && (!exceeded_rhomax)) {
+    MPI_Allreduce(&beyond_rhomax, &exceeded_rhomax, 1, MPI_INT, MPI_SUM, world);
+    if (exceeded_rhomax) {
+      if (comm->me == 0)
+        error->warning(FLERR,
+                       "A per-atom density exceeded rhomax of EAM potential table - "
+                       "a linear extrapolation to the energy was made");
+    }
+  }
 }
 
 template <int EVFLAG, int EFLAG, int NEWTON_PAIR>
-void PairEAMOMP::eval(int iifrom, int iito, ThrData * const thr)
+void PairEAMOMP::eval(int iifrom, int iito, int *beyond_rhomax, ThrData * const thr)
 {
   int i,j,ii,jj,m,jnum,itype,jtype;
   double xtmp,ytmp,ztmp,delx,dely,delz,evdwl,fpair;
@@ -104,8 +116,8 @@ void PairEAMOMP::eval(int iifrom, int iito, ThrData * const thr)
 
   evdwl = 0.0;
 
-  const dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
-  dbl3_t * _noalias const f = (dbl3_t *) thr->get_f()[0];
+  const auto * _noalias const x = (dbl3_t *) atom->x[0];
+  auto * _noalias const f = (dbl3_t *) thr->get_f()[0];
   double * const rho_t = thr->get_rho();
   const int tid = thr->get_tid();
   const int nthreads = comm->nthreads;
@@ -174,7 +186,7 @@ void PairEAMOMP::eval(int iifrom, int iito, ThrData * const thr)
 #if defined(_OPENMP)
 #pragma omp master
 #endif
-    { comm->reverse_comm_pair(this); }
+    { comm->reverse_comm(this); }
 
     // wait until master thread is done with communication
     sync_threads();
@@ -203,7 +215,10 @@ void PairEAMOMP::eval(int iifrom, int iito, ThrData * const thr)
     fp[i] = (coeff[0]*p + coeff[1])*p + coeff[2];
     if (EFLAG) {
       phi = ((coeff[3]*p + coeff[4])*p + coeff[5])*p + coeff[6];
-      if (rho[i] > rhomax) phi += fp[i] * (rho[i]-rhomax);
+      if (rho[i] > rhomax) {
+        phi += fp[i] * (rho[i]-rhomax);
+        *beyond_rhomax = 1;
+      }
       e_tally_thr(this, i, i, nlocal, NEWTON_PAIR, scale[type[i]][type[i]]*phi, 0.0, thr);
     }
   }
@@ -216,7 +231,7 @@ void PairEAMOMP::eval(int iifrom, int iito, ThrData * const thr)
 #if defined(_OPENMP)
 #pragma omp master
 #endif
-  { comm->forward_comm_pair(this); }
+  { comm->forward_comm(this); }
 
   // wait until master thread is done with communication
   sync_threads();

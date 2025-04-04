@@ -9,7 +9,7 @@
 
 
 CVSCRIPT(colvar_addforce,
-         "Apply the given force onto this colvar and return the same\n"
+         "Apply the given force onto this colvar (no effects outside run)\n"
          "force : float or array - Applied force; matches colvar dimensionality",
          1, 1,
          "force : float or array - Applied force; must match colvar dimensionality",
@@ -25,6 +25,14 @@ CVSCRIPT(colvar_addforce,
          }
          this_colvar->add_bias_force(force);
          script->set_result_colvarvalue(force);
+         return COLVARS_OK;
+         )
+
+CVSCRIPT(colvar_communicateforces,
+         "Communicate bias forces from this colvar to atoms",
+         0, 0,
+         "",
+         this_colvar->communicate_forces();
          return COLVARS_OK;
          )
 
@@ -70,6 +78,14 @@ CVSCRIPT(colvar_getappliedforce,
          0, 0,
          "",
          script->set_result_colvarvalue(this_colvar->applied_force());
+         return COLVARS_OK;
+         )
+
+CVSCRIPT(colvar_resetbiasforce,
+         "Return the total of the forces applied to this colvar",
+         0, 0,
+         "",
+         this_colvar->reset_bias_force();
          return COLVARS_OK;
          )
 

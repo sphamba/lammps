@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -30,7 +30,6 @@
 #include "kspace.h"
 #include "math_const.h"
 #include "math_extra.h"
-#include "modify.h"
 #include "rigid_const.h"
 #include "update.h"
 
@@ -211,16 +210,31 @@ void FixRigidNHOMP::initial_integrate(int vflag)
   // set coords/orient and velocity/rotation of atoms in rigid bodies
   // from quarternion and omega
 
-  if (triclinic)
-    if (evflag)
-      set_xv_thr<1,1>();
-    else
-      set_xv_thr<1,0>();
-  else
-    if (evflag)
-      set_xv_thr<0,1>();
-    else
-      set_xv_thr<0,0>();
+  if (domain->dimension == 2) {
+    if (triclinic) {
+      if (evflag)
+        set_xv_thr<1,1,2>();
+      else
+        set_xv_thr<1,0,2>();
+    }  else {
+      if (evflag)
+        set_xv_thr<0,1,2>();
+      else
+        set_xv_thr<0,0,2>();
+    }
+  } else {
+    if (triclinic) {
+      if (evflag)
+        set_xv_thr<1,1,3>();
+      else
+        set_xv_thr<1,0,3>();
+    } else {
+      if (evflag)
+        set_xv_thr<0,1,3>();
+      else
+        set_xv_thr<0,0,3>();
+    }
+  }
 
   // remap simulation box by full step
   // redo KSpace coeffs since volume has changed
@@ -236,7 +250,7 @@ void FixRigidNHOMP::initial_integrate(int vflag)
 void FixRigidNHOMP::compute_forces_and_torques()
 {
   double * const * _noalias const x = atom->x;
-  const dbl3_t * _noalias const f = (dbl3_t *) atom->f[0];
+  const auto * _noalias const f = (dbl3_t *) atom->f[0];
   const double * const * const torque_one = atom->torque;
   const int nlocal = atom->nlocal;
 
@@ -246,12 +260,11 @@ void FixRigidNHOMP::compute_forces_and_torques()
    if (rstyle == SINGLE) {
      // we have just one rigid body. use OpenMP reduction to get sum[]
      double s0=0.0,s1=0.0,s2=0.0,s3=0.0,s4=0.0,s5=0.0;
-     int i;
 
 #if defined(_OPENMP)
-#pragma omp parallel for LMP_DEFAULT_NONE private(i) reduction(+:s0,s1,s2,s3,s4,s5)
+#pragma omp parallel for LMP_DEFAULT_NONE reduction(+:s0,s1,s2,s3,s4,s5)
 #endif
-     for (i = 0; i < nlocal; i++) {
+     for (int i = 0; i < nlocal; i++) {
        const int ibody = body[i];
        if (ibody < 0) continue;
 
@@ -285,12 +298,11 @@ void FixRigidNHOMP::compute_forces_and_torques()
 
      for (int ib = 0; ib < nbody; ++ib) {
        double s0=0.0,s1=0.0,s2=0.0,s3=0.0,s4=0.0,s5=0.0;
-       int i;
 
 #if defined(_OPENMP)
-#pragma omp parallel for LMP_DEFAULT_NONE private(i) LMP_SHARED(ib) reduction(+:s0,s1,s2,s3,s4,s5)
+#pragma omp parallel for LMP_DEFAULT_NONE LMP_SHARED(ib) reduction(+:s0,s1,s2,s3,s4,s5)
 #endif
-       for (i = 0; i < nlocal; i++) {
+       for (int i = 0; i < nlocal; i++) {
          const int ibody = body[i];
          if (ibody != ib) continue;
 
@@ -325,11 +337,13 @@ void FixRigidNHOMP::compute_forces_and_torques()
      // a few atoms each. so we loop over all atoms for all threads
      // and then each thread only processes some bodies.
 
-     const int nthreads=comm->nthreads;
      memset(&sum[0][0],0,6*nbody*sizeof(double));
 
 #if defined(_OPENMP)
+     const int nthreads=comm->nthreads;
 #pragma omp parallel LMP_DEFAULT_NONE
+#else
+     const int nthreads=1;
 #endif
      {
 #if defined(_OPENMP)
@@ -505,13 +519,23 @@ void FixRigidNHOMP::final_integrate()
   // virial is already setup from initial_integrate
   // triclinic only matters for virial calculation.
 
-  if (evflag)
-    if (triclinic)
-      set_v_thr<1,1>();
+  if (domain->dimension == 2) {
+    if (evflag)
+      if (triclinic)
+        set_v_thr<1,1,2>();
+      else
+        set_v_thr<0,1,2>();
     else
-      set_v_thr<0,1>();
-  else
-    set_v_thr<0,0>();
+      set_v_thr<0,0,2>();
+  } else {
+    if (evflag)
+      if (triclinic)
+        set_v_thr<1,1,3>();
+      else
+        set_v_thr<0,1,3>();
+    else
+      set_v_thr<0,0,3>();
+  }
 
   // compute current temperature
   if (tcomputeflag) t_current = temperature->compute_scalar();
@@ -560,9 +584,7 @@ void FixRigidNHOMP::remap()
         domain->x2lamda(x[i],x[i]);
   }
 
-  if (nrigid)
-    for (int i = 0; i < nrigidfix; i++)
-      modify->fix[rfix[i]]->deform(0);
+  for (auto &ifix : rfix) ifix->deform(0);
 
   // reset global and local box to new size/shape
 
@@ -592,9 +614,7 @@ void FixRigidNHOMP::remap()
         domain->lamda2x(x[i],x[i]);
   }
 
-  if (nrigid)
-    for (int i = 0; i< nrigidfix; i++)
-      modify->fix[rfix[i]]->deform(1);
+  for (auto &ifix : rfix) ifix->deform(1);
 }
 
 /* ----------------------------------------------------------------------
@@ -605,12 +625,12 @@ void FixRigidNHOMP::remap()
 
    NOTE: this needs to be kept in sync with FixRigidOMP
 ------------------------------------------------------------------------- */
-template <int TRICLINIC, int EVFLAG>
+template <int TRICLINIC, int EVFLAG, int DIMENSION>
 void FixRigidNHOMP::set_xv_thr()
 {
-  dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
-  dbl3_t * _noalias const v = (dbl3_t *) atom->v[0];
-  const dbl3_t * _noalias const f = (dbl3_t *) atom->f[0];
+  auto * _noalias const x = (dbl3_t *) atom->x[0];
+  auto * _noalias const v = (dbl3_t *) atom->v[0];
+  const auto * _noalias const f = (dbl3_t *) atom->f[0];
   const double * _noalias const rmass = atom->rmass;
   const double * _noalias const mass = atom->mass;
   const int * _noalias const type = atom->type;
@@ -635,9 +655,9 @@ void FixRigidNHOMP::set_xv_thr()
     const int ibody = body[i];
     if (ibody < 0) continue;
 
-    const dbl3_t &xcmi = * ((dbl3_t *) xcm[ibody]);
-    const dbl3_t &vcmi = * ((dbl3_t *) vcm[ibody]);
-    const dbl3_t &omegai = * ((dbl3_t *) omega[ibody]);
+    const auto &xcmi = * ((dbl3_t *) xcm[ibody]);
+    const auto &vcmi = * ((dbl3_t *) vcm[ibody]);
+    const auto &omegai = * ((dbl3_t *) omega[ibody]);
 
     const int xbox = (xcmimage[i] & IMGMASK) - IMGMAX;
     const int ybox = (xcmimage[i] >> IMGBITS & IMGMASK) - IMGMAX;
@@ -666,6 +686,8 @@ void FixRigidNHOMP::set_xv_thr()
     v[i].x = omegai.y*x[i].z - omegai.z*x[i].y + vcmi.x;
     v[i].y = omegai.z*x[i].x - omegai.x*x[i].z + vcmi.y;
     v[i].z = omegai.x*x[i].y - omegai.y*x[i].x + vcmi.z;
+
+    if (DIMENSION == 2) x[i].z = v[i].z = 0.0;
 
     // add center of mass to displacement
     // map back into periodic box via xbox,ybox,zbox
@@ -805,12 +827,12 @@ void FixRigidNHOMP::set_xv_thr()
 
    NOTE: this needs to be kept in sync with FixRigidOMP
 ------------------------------------------------------------------------- */
-template <int TRICLINIC, int EVFLAG>
+template <int TRICLINIC, int EVFLAG, int DIMENSION>
 void FixRigidNHOMP::set_v_thr()
 {
-  dbl3_t * _noalias const x = (dbl3_t *) atom->x[0];
-  dbl3_t * _noalias const v = (dbl3_t *) atom->v[0];
-  const dbl3_t * _noalias const f = (dbl3_t *) atom->f[0];
+  auto * _noalias const x = (dbl3_t *) atom->x[0];
+  auto * _noalias const v = (dbl3_t *) atom->v[0];
+  const auto * _noalias const f = (dbl3_t *) atom->f[0];
   const double * _noalias const rmass = atom->rmass;
   const double * _noalias const mass = atom->mass;
   const int * _noalias const type = atom->type;
@@ -835,8 +857,8 @@ void FixRigidNHOMP::set_v_thr()
     const int ibody = body[i];
     if (ibody < 0) continue;
 
-    const dbl3_t &vcmi = * ((dbl3_t *) vcm[ibody]);
-    const dbl3_t &omegai = * ((dbl3_t *) omega[ibody]);
+    const auto &vcmi = * ((dbl3_t *) vcm[ibody]);
+    const auto &omegai = * ((dbl3_t *) omega[ibody]);
     double delta[3],vx,vy,vz;
 
     MathExtra::matvec(ex_space[ibody],ey_space[ibody],
@@ -853,6 +875,8 @@ void FixRigidNHOMP::set_v_thr()
     v[i].x = omegai.y*delta[2] - omegai.z*delta[1] + vcmi.x;
     v[i].y = omegai.z*delta[0] - omegai.x*delta[2] + vcmi.y;
     v[i].z = omegai.x*delta[1] - omegai.y*delta[0] + vcmi.z;
+
+    if (DIMENSION == 2) v[i].z = 0.0;
 
     // virial = unwrapped coords dotted into body constraint force
     // body constraint force = implied force due to v change minus f external

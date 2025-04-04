@@ -2,7 +2,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -23,13 +23,11 @@
 #include "comm.h"
 #include "error.h"
 #include "force.h"
-#include "input.h"
-#include "memory_kokkos.h"
-#include "neigh_list.h"
-#include "neigh_request.h"
+#include "kokkos_type.h"
+#include "neigh_list_kokkos.h"
 
 #include "fix_ave_atom.h"
-#include "pair_reaxff_kokkos.h"
+#include "pair_reaxff.h"
 #include "reaxff_defs.h"
 
 using namespace LAMMPS_NS;
@@ -51,18 +49,11 @@ FixReaxFFSpeciesKokkos::FixReaxFFSpeciesKokkos(LAMMPS *lmp, int narg, char **arg
 
 /* ---------------------------------------------------------------------- */
 
-FixReaxFFSpeciesKokkos::~FixReaxFFSpeciesKokkos()
-{
-
-}
-
-/* ---------------------------------------------------------------------- */
-
 void FixReaxFFSpeciesKokkos::init()
 {
   Pair* pair_kk = force->pair_match("^reax../kk",0);
-  if (pair_kk == nullptr) error->all(FLERR,"Cannot use fix reaxff/species/kk without "
-                  "pair_style reaxff/kk");
+  if (pair_kk == nullptr)
+    error->all(FLERR,"Cannot use fix reaxff/species/kk without pair_style reaxff/kk");
 
   FixReaxFFSpecies::init();
 }
@@ -101,12 +92,12 @@ void FixReaxFFSpeciesKokkos::FindMolecule()
   }
 
   loop = 0;
-  while (1) {
-    comm->forward_comm_fix(this);
+  while (true) {
+    comm->forward_comm(this);
     loop ++;
 
     change = 0;
-    while (1) {
+    while (true) {
       done = 1;
 
       for (ii = 0; ii < inum; ii++) {
@@ -142,7 +133,7 @@ void FixReaxFFSpeciesKokkos::FindMolecule()
     if (!anychange) break;
 
     MPI_Allreduce(&loop,&looptot,1,MPI_INT,MPI_SUM,world);
-    if (looptot >= 400*nprocs) break;
+    if (looptot >= 400*comm->nprocs) break;
 
   }
 }

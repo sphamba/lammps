@@ -8,10 +8,10 @@ Packages are supported by either the LAMMPS developers or the
 contributing authors and written in a syntax and style consistent with
 the rest of LAMMPS.
 
-The "Example" column is a sub-directory in the examples directory of the
-distribution which has an input script that uses the package.
-E.g. "peptide" refers to the examples/peptide directory; PACKAGES/atc refers
-to the examples/PACKAGES/atc directory.  The "Library" column indicates
+The "Examples" column is a subdirectory in the examples directory of the
+distribution which has one or more input scripts that use the package.
+E.g. ``peptide`` refers to the ``examples/peptide`` directory; ``PACKAGES/atc`` refers
+to the ``examples/PACKAGES/atc`` directory.  The "Lib" column indicates``
 whether an extra library is needed to build and use the package:
 
 * no  = no library
@@ -21,18 +21,23 @@ whether an extra library is needed to build and use the package:
 
 .. list-table::
    :header-rows: 1
-   :widths: auto
+   :widths: 20 20 30 25 5
 
    * - Package
      - Description
      - Doc page
-     - Example
-     - Library
+     - Examples
+     - Lib
    * - :ref:`ADIOS <PKG-ADIOS>`
      - dump output via ADIOS
      - :doc:`dump adios <dump_adios>`
-     - PACKAGES/adios
+     - ``PACKAGES/adios``
      - ext
+   * - :ref:`AMOEBA <PKG-AMOEBA>`
+     - AMOEBA and HIPPO force fields
+     - :doc:`AMOEBA and HIPPO howto <Howto_amoeba>`
+     - amoeba
+     - no
    * - :ref:`ASPHERE <PKG-ASPHERE>`
      - aspherical particle models
      - :doc:`Howto spherical <Howto_spherical>`
@@ -41,37 +46,42 @@ whether an extra library is needed to build and use the package:
    * - :ref:`ATC <PKG-ATC>`
      - Atom-to-Continuum coupling
      - :doc:`fix atc <fix_atc>`
-     - PACKAGES/atc
+     - ``PACKAGES/atc``
      - int
    * - :ref:`AWPMD <PKG-AWPMD>`
      - wave packet MD
      - :doc:`pair_style awpmd/cut <pair_awpmd>`
-     - PACKAGES/awpmd
+     - ``PACKAGES/awpmd``
      - int
    * - :ref:`BOCS <PKG-BOCS>`
      - BOCS bottom up coarse graining
      - :doc:`fix bocs <fix_bocs>`
-     - PACKAGES/bocs
+     - ``PACKAGES/bocs``
      - no
    * - :ref:`BODY <PKG-BODY>`
      - body-style particles
      - :doc:`Howto body <Howto_body>`
      - body
      - no
+   * - :ref:`BPM <PKG-BPM>`
+     - bonded particle models
+     - :doc:`Howto bpm <Howto_bpm>`
+     - bpm
+     - no
    * - :ref:`BROWNIAN <PKG-BROWNIAN>`
      - Brownian dynamics, self-propelled particles
      - :doc:`fix brownian <fix_brownian>`, :doc:`fix propel/self <fix_propel_self>`
-     - PACKAGES/brownian
+     - ``PACKAGES/brownian``
      - no
    * - :ref:`CG-DNA <PKG-CG-DNA>`
      - coarse-grained DNA force fields
-     - src/CG-DNA/README
-     - PACKAGES/cgdna
+     - ``src/CG-DNA/README``
+     - ``PACKAGES/cgdna``
      - no
-   * - :ref:`CG-SDK <PKG-CG-SDK>`
-     - SDK coarse-graining model
-     - :doc:`pair_style lj/sdk <pair_sdk>`
-     - PACKAGES/cgsdk
+   * - :ref:`CG-SPICA <PKG-CG-SPICA>`
+     - SPICA (SDK) coarse-graining model
+     - :doc:`pair_style lj/spica <pair_spica>`
+     - ``PACKAGES/cgspica``
      - no
    * - :ref:`CLASS2 <PKG-CLASS2>`
      - class 2 force fields
@@ -84,9 +94,9 @@ whether an extra library is needed to build and use the package:
      - colloid
      - no
    * - :ref:`COLVARS <PKG-COLVARS>`
-     - collective variables library
+     - `Colvars collective variables library <https://colvars.github.io/>`_
      - :doc:`fix colvars <fix_colvars>`
-     - PACKAGES/colvars
+     - ``PACKAGES/colvars``
      - int
    * - :ref:`COMPRESS <PKG-COMPRESS>`
      - I/O compression
@@ -101,12 +111,12 @@ whether an extra library is needed to build and use the package:
    * - :ref:`DIELECTRIC <PKG-DIELECTRIC>`
      - dielectric boundary solvers and force styles
      - :doc:`compute efield/atom <compute_efield_atom>`
-     - PACKAGES/dielectric
+     - ``PACKAGES/dielectric``
      - no
    * - :ref:`DIFFRACTION <PKG-DIFFRACTION>`
      - virtual x-ray and electron diffraction
      - :doc:`compute xrd <compute_xrd>`
-     - PACKAGES/diffraction
+     - ``PACKAGES/diffraction``
      - no
    * - :ref:`DIPOLE <PKG-DIPOLE>`
      - point dipole particles
@@ -115,33 +125,43 @@ whether an extra library is needed to build and use the package:
      - no
    * - :ref:`DPD-BASIC <PKG-DPD-BASIC>`
      - basic DPD models
-     - :doc:`pair_styles dpd dpd/tstat <pair_dpd>` :doc:`dpd/ext dpd/ext/tstat <pair_dpd_ext>`
-     - PACKAGES/dpd-basic
+     - :doc:`pair_styles dpd <pair_dpd>` :doc:`dpd/ext <pair_dpd_ext>`
+     - ``PACKAGES/dpd-basic``
      - no
    * - :ref:`DPD-MESO <PKG-DPD-MESO>`
      - mesoscale DPD models
      - :doc:`pair_style edpd <pair_mesodpd>`
-     - PACKAGES/dpd-meso
+     - ``PACKAGES/dpd-meso``
      - no
    * - :ref:`DPD-REACT <PKG-DPD-REACT>`
      - reactive dissipative particle dynamics
-     - src/DPD-REACT/README
-     - PACKAGES/dpd-react
+     - ``src/DPD-REACT/README``
+     - ``PACKAGES/dpd-react``
      - no
    * - :ref:`DPD-SMOOTH <PKG-DPD-SMOOTH>`
      - smoothed dissipative particle dynamics
-     - src/DPD-SMOOTH/README
-     - PACKAGES/dpd-smooth
+     - ``src/DPD-SMOOTH/README``
+     - ``PACKAGES/dpd-smooth``
      - no
    * - :ref:`DRUDE <PKG-DRUDE>`
      - Drude oscillators
      - :doc:`Howto drude <Howto_drude>`
-     - PACKAGES/drude
+     - ``PACKAGES/drude``
      - no
    * - :ref:`EFF <PKG-EFF>`
      - electron force field
      - :doc:`pair_style eff/cut <pair_eff>`
-     - PACKAGES/eff
+     - ``PACKAGES/eff``
+     - no
+   * - :ref:`ELECTRODE <PKG-ELECTRODE>`
+     - electrode charges to match potential
+     - :doc:`fix electrode/conp <fix_electrode>`
+     - ``PACKAGES/electrode``
+     - no
+   * - :ref:`EXTRA-COMMAND <PKG-EXTRA-COMMAND>`
+     - additional command styles
+     - :doc:`general commands <Commands_all>`
+     - n/a
      - no
    * - :ref:`EXTRA-COMPUTE <PKG-EXTRA-COMPUTE>`
      - additional compute styles
@@ -171,7 +191,7 @@ whether an extra library is needed to build and use the package:
    * - :ref:`FEP <PKG-FEP>`
      - free energy perturbation
      - :doc:`compute fep <compute_fep>`
-     - PACKAGES/fep
+     - ``PACKAGES/fep``
      - no
    * - :ref:`GPU <PKG-GPU>`
      - GPU-enabled styles
@@ -196,7 +216,7 @@ whether an extra library is needed to build and use the package:
    * - :ref:`INTERLAYER <PKG-INTERLAYER>`
      - Inter-layer pair potentials
      - :doc:`several pair styles <Commands_pair>`
-     - PACKAGES/interlayer
+     - ``PACKAGES/interlayer``
      - no
    * - :ref:`KIM <PKG-KIM>`
      - OpenKIM wrapper
@@ -216,22 +236,22 @@ whether an extra library is needed to build and use the package:
    * - :ref:`LATBOLTZ <PKG-LATBOLTZ>`
      - Lattice Boltzmann fluid
      - :doc:`fix lb/fluid <fix_lb_fluid>`
-     - PACKAGES/latboltz
+     - ``PACKAGES/latboltz``
      - no
-   * - :ref:`LATTE <PKG-LATTE>`
-     - quantum DFTB forces via LATTE
-     - :doc:`fix latte <fix_latte>`
-     - latte
-     - ext
+   * - :ref:`LEPTON <PKG-LEPTON>`
+     - evaluate strings as potential function
+     - :doc:`pair_style lepton <pair_lepton>`
+     - ``PACKAGES/lepton``
+     - int
    * - :ref:`MACHDYN <PKG-MACHDYN>`
      - smoothed Mach dynamics
      - `SMD User Guide <PDF/MACHDYN_LAMMPS_userguide.pdf>`_
-     - PACKAGES/machdyn
+     - ``PACKAGES/machdyn``
      - ext
    * - :ref:`MANIFOLD <PKG-MANIFOLD>`
      - motion on 2d surfaces
      - :doc:`fix manifoldforce <fix_manifoldforce>`
-     - PACKAGES/manifold
+     - ``PACKAGES/manifold``
      - no
    * - :ref:`MANYBODY <PKG-MANYBODY>`
      - many-body potentials
@@ -244,9 +264,9 @@ whether an extra library is needed to build and use the package:
      - n/a
      - no
    * - :ref:`MDI <PKG-MDI>`
-     - client-server coupling
+     - client-server code coupling
      - :doc:`MDI Howto <Howto_mdi>`
-     - PACKAGES/mdi
+     - ``PACKAGES/mdi``
      - ext
    * - :ref:`MEAM <PKG-MEAM>`
      - modified EAM potential (C++)
@@ -255,18 +275,13 @@ whether an extra library is needed to build and use the package:
      - no
    * - :ref:`MESONT <PKG-MESONT>`
      - mesoscopic tubular potential model
-     - pair styles :doc:`mesont/tpm <pair_mesont_tpm>`, :doc:`mesocnt <pair_mesocnt>`
-     - PACKAGES/mesont
-     - int
-   * - :ref:`MESSAGE <PKG-MESSAGE>`
-     - client/server messaging
-     - :doc:`message <message>`
-     - message
-     - int
+     - pair styles :doc:`mesocnt <pair_mesocnt>`
+     - ``PACKAGES/mesont``
+     - no
    * - :ref:`MGPT <PKG-MGPT>`
      - fast MGPT multi-ion potentials
      - :doc:`pair_style mgpt <pair_mgpt>`
-     - PACKAGES/mgpt
+     - ``PACKAGES/mgpt``
      - no
    * - :ref:`MISC <PKG-MISC>`
      - miscellaneous single-file commands
@@ -276,7 +291,7 @@ whether an extra library is needed to build and use the package:
    * - :ref:`ML-HDNNP <PKG-ML-HDNNP>`
      - High-dimensional neural network potentials
      - :doc:`pair_style hdnnp <pair_hdnnp>`
-     - PACKAGES/hdnnp
+     - ``PACKAGES/hdnnp``
      - ext
    * - :ref:`ML-IAP <PKG-ML-IAP>`
      - multiple machine learning potentials
@@ -286,27 +301,37 @@ whether an extra library is needed to build and use the package:
    * - :ref:`ML-PACE <PKG-ML-PACE>`
      - Atomic Cluster Expansion potential
      - :doc:`pair pace <pair_pace>`
-     - PACKAGES/pace
+     - ``PACKAGES/pace``
+     - ext
+   * - :ref:`ML-POD <PKG-ML-POD>`
+     - Proper orthogonal decomposition potentials
+     - :doc:`pair pod <pair_pod>`
+     - pod
      - ext
    * - :ref:`ML-QUIP <PKG-ML-QUIP>`
      - QUIP/libatoms interface
      - :doc:`pair_style quip <pair_quip>`
-     - PACKAGES/quip
+     - ``PACKAGES/quip``
      - ext
    * - :ref:`ML-RANN <PKG-ML-RANN>`
      - Pair style for RANN potentials
      - :doc:`pair rann <pair_rann>`
-     - PACKAGES/rann
+     - ``PACKAGES/rann``
      - no
    * - :ref:`ML-SNAP <PKG-ML-SNAP>`
      - quantum-fitted potential
      - :doc:`pair_style snap <pair_snap>`
      - snap
      - no
+   * - :ref:`ML-UF3 <PKG-ML-UF3>`
+     - quantum-fitted ultra fast potentials
+     - :doc:`pair_style uf3 <pair_uf3>`
+     - ``PACKAGES/uf3``
+     - no
    * - :ref:`MOFFF <PKG-MOFFF>`
      - styles for `MOF-FF <MOFplus_>`_ force field
      - :doc:`pair_style buck6d/coul/gauss <pair_buck6d_coul_gauss>`
-     - PACKAGES/mofff
+     - ``PACKAGES/mofff``
      - no
    * - :ref:`MOLECULE <PKG-MOLECULE>`
      - molecular system force fields
@@ -317,16 +342,6 @@ whether an extra library is needed to build and use the package:
      - `VMD <VMD_>`_ molfile plug-ins
      - :doc:`dump molfile <dump_molfile>`
      - n/a
-     - ext
-   * - :ref:`MPIIO <PKG-MPIIO>`
-     - MPI parallel I/O dump and restart
-     - :doc:`dump <dump>`
-     - n/a
-     - no
-   * - :ref:`MSCG <PKG-MSCG>`
-     - multi-scale coarse-graining wrapper
-     - :doc:`fix mscg <fix_mscg>`
-     - mscg
      - ext
    * - :ref:`NETCDF <PKG-NETCDF>`
      - dump output via NetCDF
@@ -346,7 +361,7 @@ whether an extra library is needed to build and use the package:
    * - :ref:`ORIENT <PKG-ORIENT>`
      - fixes for orientation depended forces
      - :doc:`fix orient/* <fix_orient>`
-     - PACKAGES/orient_eco
+     - ``PACKAGES/orient_eco``
      - no
    * - :ref:`PERI <PKG-PERI>`
      - Peridynamics models
@@ -356,7 +371,7 @@ whether an extra library is needed to build and use the package:
    * - :ref:`PHONON <PKG-PHONON>`
      - phonon dynamical matrix
      - :doc:`fix phonon <fix_phonon>`
-     - PACKAGES/phonon
+     - ``PACKAGES/phonon``
      - no
    * - :ref:`PLUGIN <PKG-PLUGIN>`
      - Plugin loader command
@@ -364,9 +379,9 @@ whether an extra library is needed to build and use the package:
      - plugins
      - no
    * - :ref:`PLUMED <PKG-PLUMED>`
-     - :ref:`PLUMED <PLUMED>` free energy library
+     - `PLUMED free energy library <https://www.plumed.org>`_
      - :doc:`fix plumed <fix_plumed>`
-     - PACKAGES/plumed
+     - ``PACKAGES/plumed``
      - ext
    * - :ref:`POEMS <PKG-POEMS>`
      - coupled rigid body motion
@@ -391,17 +406,22 @@ whether an extra library is needed to build and use the package:
    * - :ref:`QMMM <PKG-QMMM>`
      - QM/MM coupling
      - :doc:`fix qmmm <fix_qmmm>`
-     - PACKAGES/qmmm
+     - ``PACKAGES/qmmm``
      - ext
    * - :ref:`QTB <PKG-QTB>`
      - quantum nuclear effects
      - :doc:`fix qtb <fix_qtb>` :doc:`fix qbmsst <fix_qbmsst>`
      - qtb
      - no
+   * - :ref:`RHEO <PKG-RHEO>`
+     - reproducing hydrodynamics and elastic objects
+     - :doc:`Howto rheo <Howto_rheo>`
+     - rheo
+     - no
    * - :ref:`REACTION <PKG-REACTION>`
      - chemical reactions in classical MD
      - :doc:`fix bond/react <fix_bond_react>`
-     - PACKAGES/reaction
+     - ``PACKAGES/reaction``
      - no
    * - :ref:`REAXFF <PKG-REAXFF>`
      - ReaxFF potential (C/C++)
@@ -421,7 +441,7 @@ whether an extra library is needed to build and use the package:
    * - :ref:`SCAFACOS <PKG-SCAFACOS>`
      - wrapper for ScaFaCoS Kspace solver
      - :doc:`kspace_style scafacos <kspace_style>`
-     - PACKAGES/scafacos
+     - ``PACKAGES/scafacos``
      - ext
    * - :ref:`SHOCK <PKG-SHOCK>`
      - shock loading methods
@@ -429,14 +449,14 @@ whether an extra library is needed to build and use the package:
      - n/a
      - no
    * - :ref:`SMTBQ <PKG-SMTBQ>`
-     - second moment tight binding potential
-     - :doc:`pair_style smtbq <pair_smtbq>`
-     - PACKAGES/smtbq
+     - second moment tight binding potentials
+     - pair styles :doc:`smtbq <pair_smtbq>`, :doc:`smatb <pair_smatb>`
+     - ``PACKAGES/smtbq``
      - no
    * - :ref:`SPH <PKG-SPH>`
      - smoothed particle hydrodynamics
      - `SPH User Guide <PDF/SPH_LAMMPS_userguide.pdf>`_
-     - PACKAGES/sph
+     - ``PACKAGES/sph``
      - no
    * - :ref:`SPIN <PKG-SPIN>`
      - magnetic atomic spin dynamics
@@ -451,12 +471,12 @@ whether an extra library is needed to build and use the package:
    * - :ref:`TALLY <PKG-TALLY>`
      - pairwise tally computes
      - :doc:`compute XXX/tally <compute_tally>`
-     - PACKAGES/tally
+     - ``PACKAGES/tally``
      - no
    * - :ref:`UEF <PKG-UEF>`
      - extensional flow
      - :doc:`fix nvt/uef <fix_nh_uef>`
-     - PACKAGES/uef
+     - ``PACKAGES/uef``
      - no
    * - :ref:`VORONOI <PKG-VORONOI>`
      - Voronoi tesselation
@@ -471,7 +491,7 @@ whether an extra library is needed to build and use the package:
    * - :ref:`YAFF <PKG-YAFF>`
      - additional styles implemented in YAFF
      - :doc:`angle_style cross <angle_cross>`
-     - PACKAGES/yaff
+     - ``PACKAGES/yaff``
      - no
 
 .. _MOFplus: https://www.mofplus.org/content/show/MOF-FF

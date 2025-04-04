@@ -13,7 +13,7 @@
 /* ----------------------------------------------------------------------
  LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
  https://www.lammps.org/, Sandia National Laboratories
- Steve Plimpton, sjplimp@sandia.gov
+ LAMMPS development team: developers@lammps.org
 
  Copyright (2003) Sandia Corporation.  Under the terms of Contract
  DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -25,13 +25,14 @@
 
 #include "compute_smd_vol.h"
 
-#include <cstring>
 #include "atom.h"
-#include "update.h"
-#include "modify.h"
 #include "comm.h"
-#include "memory.h"
 #include "error.h"
+#include "memory.h"
+#include "modify.h"
+#include "update.h"
+
+#include <cstring>
 
 using namespace LAMMPS_NS;
 
@@ -39,12 +40,12 @@ using namespace LAMMPS_NS;
 
 ComputeSMDVol::ComputeSMDVol(LAMMPS *lmp, int narg, char **arg) :
                 Compute(lmp, narg, arg) {
-        if (narg != 3)
-                error->all(FLERR, "Illegal compute smd/volume command");
+        if (narg != 3) error->all(FLERR, "Illegal compute smd/volume command");
         if (atom->vfrac_flag != 1)
-                error->all(FLERR, "compute smd/volume command requires atom_style with density (e.g. smd)");
+          error->all(FLERR, "compute smd/volume command requires atom_style with density (e.g. smd)");
 
         scalar_flag = 1;
+        extscalar = 1;
         peratom_flag = 1;
         size_peratom_cols = 0;
 

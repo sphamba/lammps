@@ -8,9 +8,9 @@
 // Colvars repository at GitHub.
 
 #include <vector>
-#include <cstdlib>
-#include <string.h>
 
+#include "colvar.h"
+#include "colvarbias.h"
 #include "colvarproxy.h"
 #include "colvardeps.h"
 #include "colvarscript.h"
@@ -96,6 +96,11 @@ int cvscript_command_n_args_max(char const *c)
                                        objc, N_ARGS_MIN, N_ARGS_MAX) != \
         COLVARSCRIPT_OK) {                                              \
       return COLVARSCRIPT_ERROR;                                        \
+    }                                                                   \
+    if (objc > 1) {                                                     \
+      /* Silence unused parameter warning */                            \
+      (void) pobj;                                                      \
+      (void) objv[0];                                                   \
     }                                                                   \
     FN_BODY;                                                            \
   }

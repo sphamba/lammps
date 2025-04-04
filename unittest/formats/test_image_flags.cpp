@@ -1,7 +1,7 @@
 /* ----------------------------------------------------------------------
    LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
    https://www.lammps.org/ Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
+   LAMMPS Development team: developers@lammps.org
 
    Copyright (2003) Sandia Corporation.  Under the terms of Contract
    DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
@@ -61,10 +61,10 @@ protected:
 
 TEST_F(ImageFlagsTest, change_box)
 {
-    auto image = lmp->atom->image;
-    int imx    = (image[0] & IMGMASK) - IMGMAX;
-    int imy    = (image[0] >> IMGBITS & IMGMASK) - IMGMAX;
-    int imz    = (image[0] >> IMG2BITS) - IMGMAX;
+    auto *image = lmp->atom->image;
+    int imx     = (image[0] & IMGMASK) - IMGMAX;
+    int imy     = (image[0] >> IMGBITS & IMGMASK) - IMGMAX;
+    int imz     = (image[0] >> IMG2BITS) - IMGMAX;
 
     ASSERT_EQ(imx, -1);
     ASSERT_EQ(imy, 2);
@@ -153,10 +153,10 @@ TEST_F(ImageFlagsTest, read_data)
     command("read_data test_image_flags.data");
     END_HIDE_OUTPUT();
 
-    auto image = lmp->atom->image;
-    int imx    = (image[0] & IMGMASK) - IMGMAX;
-    int imy    = (image[0] >> IMGBITS & IMGMASK) - IMGMAX;
-    int imz    = (image[0] >> IMG2BITS) - IMGMAX;
+    auto *image = lmp->atom->image;
+    int imx     = (image[0] & IMGMASK) - IMGMAX;
+    int imy     = (image[0] >> IMGBITS & IMGMASK) - IMGMAX;
+    int imz     = (image[0] >> IMG2BITS) - IMGMAX;
 
     ASSERT_EQ(imx, -1);
     ASSERT_EQ(imy, 2);

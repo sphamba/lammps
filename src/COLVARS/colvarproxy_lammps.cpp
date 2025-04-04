@@ -8,199 +8,120 @@
 // If you wish to distribute your changes, please submit them to the
 // Colvars repository at GitHub.
 
-
 #include "colvarproxy_lammps.h"
 
-#include "lammps.h"
+#include "domain.h"
 #include "error.h"
-#include "output.h"
-#include "random_park.h"
+#include "force.h"
+#include "lammps.h"             // includes <cstdio>, <mpi.h>, <string>, <vector>
+#include "update.h"
+#include "utils.h"
 
 #include "colvarmodule.h"
 #include "colvarproxy.h"
-
-#include <sys/stat.h>
-#include <cerrno>
-#include <cstring>
-#include <iostream>
-#include <memory>
+#include "colvarscript.h"
 
 #define HASH_FAIL  -1
 
-////////////////////////////////////////////////////////////////////////
-// local helper functions
+/* ---------------------------------------------------------------------- */
 
-// safely move filename to filename.extension
-static int my_backup_file(const char *filename, const char *extension)
+colvarproxy_lammps::colvarproxy_lammps(LAMMPS_NS::LAMMPS *lmp)  : _lmp(lmp), _random(nullptr)
 {
-  struct stat sbuf;
-  if (stat(filename, &sbuf) == 0) {
-    if (!extension) extension = ".BAK";
-    char *backup = new char[strlen(filename)+strlen(extension)+1];
-    strcpy(backup, filename);
-    strcat(backup, extension);
-#if defined(_WIN32) && !defined(__CYGWIN__)
-    remove(backup);
-#endif
-    if (rename(filename,backup)) {
-      char *sys_err_msg = strerror(errno);
-      if (!sys_err_msg)  sys_err_msg = (char *) "(unknown error)";
-      fprintf(stderr,"Error renaming file %s to %s: %s\n",
-              filename, backup, sys_err_msg);
-      delete [] backup;
-      return COLVARS_ERROR;
-    }
-    delete [] backup;
-  }
-  return COLVARS_OK;
+  engine_name_ = "LAMMPS";
+
+  first_timestep = true;
+  previous_step = -1;
+  do_exit = false;
+
+  inter_me = 0;
+  inter_num = 1;
+  bias_energy = 0.0;
+
+  engine_ready_ = false;
+  inter_comm = MPI_COMM_NULL;
 }
 
-////////////////////////////////////////////////////////////////////////
+/* ---------------------------------------------------------------------- */
 
-colvarproxy_lammps::colvarproxy_lammps(LAMMPS_NS::LAMMPS *lmp,
-                                       const char *inp_name,
-                                       const char *out_name,
-                                       const int seed,
-                                       const double temp,
-                                       MPI_Comm root2root)
-  : _lmp(lmp), inter_comm(root2root)
-{
-  if (cvm::debug())
-    log("Initializing the colvars proxy object.\n");
-
-  _random = new LAMMPS_NS::RanPark(lmp,seed);
-
-  first_timestep=true;
-  previous_step=-1;
-  t_target=temp;
-  do_exit=false;
-
-  // User-scripted forces are not available in LAMMPS
-  force_script_defined = false;
-  have_scripts = false;
-
-  // set input restart name and strip the extension, if present
-  input_prefix_str = std::string(inp_name ? inp_name : "");
-  if (input_prefix_str.rfind(".colvars.state") != std::string::npos)
-    input_prefix_str.erase(input_prefix_str.rfind(".colvars.state"),
-                            std::string(".colvars.state").size());
-
-  // output prefix is always given
-  output_prefix_str = std::string(out_name);
-  // not so for restarts
-  restart_output_prefix_str = std::string("rest");
-
-  // check if it is possible to save output configuration
-  if ((!output_prefix_str.size()) && (!restart_output_prefix_str.size())) {
-    error("Error: neither the final output state file or "
-          "the output restart file could be defined, exiting.\n");
-  }
-
-  // try to extract a restart prefix from a potential restart command.
-  LAMMPS_NS::Output *outp = _lmp->output;
-  if ((outp->restart_every_single > 0) && (outp->restart1 != 0)) {
-    restart_frequency_engine = outp->restart_every_single;
-    restart_output_prefix_str = std::string(outp->restart1);
-  } else if  ((outp->restart_every_double > 0) && (outp->restart2a != 0)) {
-    restart_frequency_engine = outp->restart_every_double;
-    restart_output_prefix_str = std::string(outp->restart2a);
-  }
-  // trim off unwanted stuff from the restart prefix
-  if (restart_output_prefix_str.rfind(".*") != std::string::npos)
-    restart_output_prefix_str.erase(restart_output_prefix_str.rfind(".*"),2);
-
-  // initialize multi-replica support, if available
-  if (replica_enabled() == COLVARS_OK) {
-    MPI_Comm_rank(inter_comm, &inter_me);
-    MPI_Comm_size(inter_comm, &inter_num);
-  }
-
-  if (cvm::debug())
-    log("Done initializing the colvars proxy object.\n");
-}
-
-
-void colvarproxy_lammps::init(const char *conf_file)
+void colvarproxy_lammps::init()
 {
   version_int = get_version_from_string(COLVARPROXY_VERSION);
 
   // create the colvarmodule instance
   colvars = new colvarmodule(this);
 
-  cvm::log("Using LAMMPS interface, version "+
-           cvm::to_str(COLVARPROXY_VERSION)+".\n");
+  // Create instance of scripting interface
+  script = new colvarscript(this, colvars);
 
-  my_angstrom  = _lmp->force->angstrom;
-  // Front-end unit is the same as back-end
-  angstrom_value = my_angstrom;
+  cvm::log("Using LAMMPS interface, version " + cvm::to_str(COLVARPROXY_VERSION) + ".\n");
 
-  // my_kcal_mol  = _lmp->force->qe2f / 23.060549;
-  // force->qe2f is 1eV expressed in LAMMPS' energy unit (1 if unit is eV, 23 if kcal/mol)
-  my_boltzmann = _lmp->force->boltz;
-  my_timestep  = _lmp->update->dt * _lmp->force->femtosecond;
+  colvars->cite_feature("LAMMPS engine");
+  colvars->cite_feature("Colvars-LAMMPS interface");
 
-  // TODO move one or more of these to setup() if needed
-  colvars->read_config_file(conf_file);
-  colvars->setup_input();
-  colvars->setup_output();
+  angstrom_value_ = _lmp->force->angstrom;
+  boltzmann_ = _lmp->force->boltz;
+  set_integration_timestep(_lmp->update->dt * _lmp->force->femtosecond);
 
   if (_lmp->update->ntimestep != 0) {
-    cvm::log("Setting initial step number from LAMMPS: "+
-             cvm::to_str(_lmp->update->ntimestep)+"\n");
-    colvars->it = colvars->it_restart =
-      static_cast<cvm::step_number>(_lmp->update->ntimestep);
-  }
-
-  if (cvm::debug()) {
-    cvm::log("atoms_ids = "+cvm::to_str(atoms_ids)+"\n");
-    cvm::log("atoms_ncopies = "+cvm::to_str(atoms_ncopies)+"\n");
-    cvm::log("atoms_positions = "+cvm::to_str(atoms_positions)+"\n");
-    cvm::log(cvm::line_marker);
-    cvm::log("Info: done initializing the colvars proxy object.\n");
+    colvars->set_initial_step(static_cast<cvm::step_number>(_lmp->update->ntimestep));
   }
 }
 
-int colvarproxy_lammps::add_config_file(const char *conf_file)
-{
-  return colvars->read_config_file(conf_file);
-}
-
-int colvarproxy_lammps::add_config_string(const std::string &conf)
-{
-  return colvars->read_config_string(conf);
-}
-
-int colvarproxy_lammps::read_state_file(char const *state_filename)
-{
-  input_prefix() = std::string(state_filename);
-  return colvars->setup_input();
-}
+/* ---------------------------------------------------------------------- */
 
 colvarproxy_lammps::~colvarproxy_lammps()
 {
-  delete _random;
-  if (colvars != nullptr) {
-    delete colvars;
-    colvars = nullptr;
+  if (_random) delete _random;
+}
+
+/* ---------------------------------------------------------------------- */
+
+void colvarproxy_lammps::set_random_seed(int seed)
+{
+  if (_random) delete _random;
+
+  _random = new LAMMPS_NS::RanPark(_lmp, seed);
+}
+
+/* ---------------------------------------------------------------------- */
+
+void colvarproxy_lammps::set_replicas_communicator(MPI_Comm root2root)
+{
+  inter_comm = root2root;
+
+  // initialize multi-replica support, if available
+  if (replica_enabled() == COLVARS_OK) {
+    MPI_Comm_rank(inter_comm, &inter_me);
+    MPI_Comm_size(inter_comm, &inter_num);
   }
 }
 
-// re-initialize data where needed
+/* ----------------------------------------------------------------------
+   re-initialize data where needed
+------------------------------------------------------------------------- */
+
 int colvarproxy_lammps::setup()
 {
-  my_timestep  = _lmp->update->dt * _lmp->force->femtosecond;
-  return colvars->setup();
+  int error_code = colvarproxy::setup();
+  set_integration_timestep(_lmp->update->dt * _lmp->force->femtosecond);
+  error_code |= colvars->update_engine_parameters();
+  error_code |= colvars->setup_input();
+  error_code |= colvars->setup_output();
+  return error_code;
 }
 
-// trigger colvars computation
+/* ----------------------------------------------------------------------
+   trigger colvars computation
+------------------------------------------------------------------------- */
+
 double colvarproxy_lammps::compute()
 {
   if (cvm::debug()) {
-    cvm::log(std::string(cvm::line_marker)+
-        "colvarproxy_lammps step no. "+
-        cvm::to_str(_lmp->update->ntimestep)+" [first - last = "+
-        cvm::to_str(_lmp->update->beginstep)+" - "+
-        cvm::to_str(_lmp->update->endstep)+"]\n");
+    cvm::log(std::string(cvm::line_marker) +
+        "colvarproxy_lammps step no. " +
+        cvm::to_str(_lmp->update->ntimestep) + " [first - last = " +
+        cvm::to_str(_lmp->update->beginstep) + " - " +
+        cvm::to_str(_lmp->update->endstep) + "]\n");
   }
 
   if (first_timestep) {
@@ -208,7 +129,7 @@ double colvarproxy_lammps::compute()
   } else {
     // Use the time step number from LAMMPS Update object
     if (_lmp->update->ntimestep - previous_step == 1) {
-      colvars->it++;
+      colvarmodule::it++;
       b_simulation_continuing = false;
     } else {
       // Cases covered by this condition:
@@ -242,58 +163,39 @@ double colvarproxy_lammps::compute()
   }
 
   if (cvm::debug()) {
-    cvm::log(std::string(cvm::line_marker)+
-             "colvarproxy_lammps, step no. "+cvm::to_str(colvars->it)+"\n"+
+    cvm::log(std::string(cvm::line_marker) +
+             "colvarproxy_lammps, step no. " + cvm::to_str(colvarmodule::it) + "\n" +
              "Updating internal data.\n");
   }
 
   // zero the forces on the atoms, so that they can be accumulated by the colvars
-  for (size_t i = 0; i < atoms_new_colvar_forces.size(); i++) {
+  for (size_t i = 0; i < atoms_new_colvar_forces.size(); i++)
     atoms_new_colvar_forces[i].reset();
-  }
 
   bias_energy = 0.0;
 
   if (cvm::debug()) {
-    cvm::log("atoms_ids = "+cvm::to_str(atoms_ids)+"\n");
-    cvm::log("atoms_ncopies = "+cvm::to_str(atoms_ncopies)+"\n");
-    cvm::log("atoms_positions = "+cvm::to_str(atoms_positions)+"\n");
-    cvm::log("atoms_new_colvar_forces = "+cvm::to_str(atoms_new_colvar_forces)+"\n");
+    cvm::log("atoms_ids = " + cvm::to_str(atoms_ids) + "\n");
+    cvm::log("atoms_refcount = " + cvm::to_str(atoms_refcount) + "\n");
+    cvm::log("atoms_positions = " + cvm::to_str(atoms_positions) + "\n");
+    cvm::log("atoms_new_colvar_forces = " + cvm::to_str(atoms_new_colvar_forces) + "\n");
   }
 
-  // call the collective variable module
-  colvars->calc();
+  // Call the collective variable module
+  if (colvars->calc() != COLVARS_OK)
+    cvm::error("Error in the collective variables module.\n", COLVARS_ERROR);
 
   if (cvm::debug()) {
-    cvm::log("atoms_ids = "+cvm::to_str(atoms_ids)+"\n");
-    cvm::log("atoms_ncopies = "+cvm::to_str(atoms_ncopies)+"\n");
-    cvm::log("atoms_positions = "+cvm::to_str(atoms_positions)+"\n");
-    cvm::log("atoms_new_colvar_forces = "+cvm::to_str(atoms_new_colvar_forces)+"\n");
+    cvm::log("atoms_ids = " + cvm::to_str(atoms_ids) + "\n");
+    cvm::log("atoms_refcount = " + cvm::to_str(atoms_refcount) + "\n");
+    cvm::log("atoms_positions = " + cvm::to_str(atoms_positions) + "\n");
+    cvm::log("atoms_new_colvar_forces = " + cvm::to_str(atoms_new_colvar_forces) + "\n");
   }
 
   return bias_energy;
 }
 
-void colvarproxy_lammps::serialize_status(std::string &rst)
-{
-  std::ostringstream os;
-  colvars->write_restart(os);
-  rst = os.str();
-}
-
-// set status from string
-bool colvarproxy_lammps::deserialize_status(std::string &rst)
-{
-  std::istringstream is;
-  is.str(rst);
-
-  if (!colvars->read_restart(is)) {
-    return false;
-  } else {
-    return true;
-  }
-}
-
+/* ---------------------------------------------------------------------- */
 
 cvm::rvector colvarproxy_lammps::position_distance(cvm::atom_pos const &pos1,
                                                    cvm::atom_pos const &pos2)
@@ -302,82 +204,90 @@ cvm::rvector colvarproxy_lammps::position_distance(cvm::atom_pos const &pos1,
   double xtmp = pos2.x - pos1.x;
   double ytmp = pos2.y - pos1.y;
   double ztmp = pos2.z - pos1.z;
-  _lmp->domain->minimum_image(xtmp,ytmp,ztmp);
-  return cvm::rvector(xtmp, ytmp, ztmp);
+  _lmp->domain->minimum_image_big(xtmp,ytmp,ztmp);
+  return {xtmp, ytmp, ztmp};
 }
 
+/* ---------------------------------------------------------------------- */
 
 void colvarproxy_lammps::log(std::string const &message)
 {
-  std::istringstream is(message);
-  std::string line;
-  while (std::getline(is, line)) {
-    if (_lmp->screen)
-      fprintf(_lmp->screen,"colvars: %s\n",line.c_str());
-    if (_lmp->logfile)
-      fprintf(_lmp->logfile,"colvars: %s\n",line.c_str());
-  }
+  LAMMPS_NS::utils::logmesg(_lmp, message);
 }
 
+/* ---------------------------------------------------------------------- */
 
 void colvarproxy_lammps::error(std::string const &message)
 {
   log(message);
-  _lmp->error->one(FLERR,
-                   "Fatal error in the collective variables module.\n");
+  _lmp->error->one(FLERR, "Fatal error in the collective variables module");
 }
 
+/* ---------------------------------------------------------------------- */
+
+char const *colvarproxy_lammps::script_obj_to_str(unsigned char *obj)
+{
+  // For now we assume that all objects passed by FixColvars are strings
+  return reinterpret_cast<char *>(obj);
+}
+
+/* ---------------------------------------------------------------------- */
+
+std::vector<std::string> colvarproxy_lammps::script_obj_to_str_vector(unsigned char *obj)
+{
+  if (cvm::debug()) {
+    cvm::log("Called colvarproxy_lammps::script_obj_to_str_vector().\n");
+  }
+  std::string const input(reinterpret_cast<char *>(obj));
+  return LAMMPS_NS::utils::split_words(input); // :-)))
+}
+
+/* ---------------------------------------------------------------------- */
 
 int colvarproxy_lammps::set_unit_system(std::string const &units_in, bool /*check_only*/)
 {
   std::string lmp_units = _lmp->update->unit_style;
   if (units_in != lmp_units) {
-    cvm::error("Error: Specified unit system for Colvars \"" + units_in + "\" is incompatible with LAMMPS internal units (" + lmp_units + ").\n");
+    cvm::error("Error: Specified unit system for Colvars \"" + units_in  +
+               "\" is incompatible with LAMMPS internal units (" + lmp_units + ").\n");
     return COLVARS_ERROR;
   }
   return COLVARS_OK;
 }
 
-
-int colvarproxy_lammps::backup_file(char const *filename)
-{
-  if (std::string(filename).rfind(std::string(".colvars.state"))
-      != std::string::npos) {
-    return my_backup_file(filename, ".old");
-  } else {
-    return my_backup_file(filename, ".BAK");
-  }
-}
-
-
-// multi-replica support
+/* ----------------------------------------------------------------------
+   multi-replica support
+------------------------------------------------------------------------- */
 
 int colvarproxy_lammps::replica_enabled()
 {
   return (inter_comm != MPI_COMM_NULL) ? COLVARS_OK : COLVARS_NOT_IMPLEMENTED;
 }
 
+/* ---------------------------------------------------------------------- */
 
 int colvarproxy_lammps::replica_index()
 {
   return inter_me;
 }
 
+/* ---------------------------------------------------------------------- */
 
 int colvarproxy_lammps::num_replicas()
 {
   return inter_num;
 }
 
+/* ---------------------------------------------------------------------- */
 
 void colvarproxy_lammps::replica_comm_barrier()
 {
   MPI_Barrier(inter_comm);
 }
 
+/* ---------------------------------------------------------------------- */
 
-int colvarproxy_lammps::replica_comm_recv(char* msg_data,
-                                          int buf_len, int src_rep)
+int colvarproxy_lammps::replica_comm_recv(char* msg_data, int buf_len, int src_rep)
 {
   MPI_Status status;
   int retval;
@@ -389,9 +299,9 @@ int colvarproxy_lammps::replica_comm_recv(char* msg_data,
   return retval;
 }
 
+/* ---------------------------------------------------------------------- */
 
-int colvarproxy_lammps::replica_comm_send(char* msg_data,
-                                          int msg_len, int dest_rep)
+int colvarproxy_lammps::replica_comm_send(char* msg_data, int msg_len, int dest_rep)
 {
   int retval;
   retval = MPI_Send(msg_data,msg_len,MPI_CHAR,dest_rep,0,inter_comm);
@@ -401,26 +311,26 @@ int colvarproxy_lammps::replica_comm_send(char* msg_data,
   return retval;
 }
 
-
+/* ---------------------------------------------------------------------- */
 
 int colvarproxy_lammps::check_atom_id(int atom_number)
 {
   int const aid = atom_number;
 
   if (cvm::debug())
-    log("Adding atom "+cvm::to_str(atom_number)+
-        " for collective variables calculation.\n");
+    log("Adding atom " + cvm::to_str(atom_number) + " for collective variables calculation.\n");
 
   // TODO add upper boundary check?
   if ((aid < 0)) {
-    cvm::error("Error: invalid atom number specified, "+
-               cvm::to_str(atom_number)+"\n", INPUT_ERROR);
-    return INPUT_ERROR;
+    cvm::error("Error: invalid atom number specified, "  +
+               cvm::to_str(atom_number) + "\n", COLVARS_INPUT_ERROR);
+    return COLVARS_INPUT_ERROR;
   }
 
   return aid;
 }
 
+/* ---------------------------------------------------------------------- */
 
 int colvarproxy_lammps::init_atom(int atom_number)
 {
@@ -429,15 +339,13 @@ int colvarproxy_lammps::init_atom(int atom_number)
   for (size_t i = 0; i < atoms_ids.size(); i++) {
     if (atoms_ids[i] == aid) {
       // this atom id was already recorded
-      atoms_ncopies[i] += 1;
+      atoms_refcount[i] += 1;
       return i;
     }
   }
 
   aid = check_atom_id(atom_number);
-  if (aid < 0) {
-    return aid;
-  }
+  if (aid < 0) return aid;
 
   int const index = colvarproxy::add_atom_slot(aid);
   // add entries for the LAMMPS-specific fields
@@ -445,4 +353,3 @@ int colvarproxy_lammps::init_atom(int atom_number)
 
   return index;
 }
-

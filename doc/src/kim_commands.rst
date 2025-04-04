@@ -29,15 +29,16 @@ Examples
 Description
 """""""""""
 
-The *kim command* includes a set of sub-commands that allow LAMMPS users to use
-interatomic models (IM) (potentials and force fields) and their predictions for
-various physical properties archived in the
-`Open Knowledgebase of Interatomic Models (OpenKIM) <https://openkim.org>`_
-repository.
+The *kim command* includes a set of sub-commands that allow LAMMPS
+users to use interatomic models (IM) (potentials and force fields) and
+their predictions for various physical properties archived in the
+`Open Knowledgebase of Interatomic Models (OpenKIM)
+<https://openkim.org>`_ repository.
 
-Using OpenKIM provides LAMMPS users with immediate access to a large number of
-verified IMs and their predictions. OpenKIM IMs have multiple benefits including
-`reliability, reproducibility and convenience <https://openkim.org/doc/overview/kim-features/>`_.
+Using OpenKIM provides LAMMPS users with immediate access to a large
+number of verified IMs and their predictions. OpenKIM IMs have
+multiple benefits including `reliability, reproducibility and
+convenience <https://openkim.org/doc/overview/kim-features/>`_.
 
 .. _IM_types:
 
@@ -427,7 +428,7 @@ Syntax
 * variable(s) = single name or list of names of (string style) LAMMPS
   variable(s) where a query result or parameter get result is stored.  Variables
   that do not exist will be created by the command
-* formatarg = *list, split, or index* (optional):
+* formatarg = *list* or *split* or *index* (optional)
 
   .. parsed-literal::
 
@@ -696,17 +697,18 @@ Syntax
 * variable(s) = single name or list of names of (string style) LAMMPS
   variable(s) where a query result or parameter get result is stored.  Variables
   that do not exist will be created by the command
-* formatarg = *list, split, or explicit* (optional):
+* formatarg = *list* or *split* or *explicit* (optional)
+
   .. parsed-literal::
 
      *list* = returns a single string with a list of space separated values
             (e.g. "1.0 2.0 3.0"), which is placed in a LAMMPS variable as
-            defined by the *variable* argument.
+            defined by the *variable* argument
      *split* = returns the values separately in new variables with names based
             on the prefix specified in *variable* and a number appended to
             indicate which element in the list of values is in the variable
      *explicit* = returns the values separately in one more more variable names
-            provided as arguments that precede *formatarg*\ . [default]
+            provided as arguments that precede *formatarg* (default)
 * values = new value(s) to replace the current value(s) of a KIM portable model
   parameter
 
@@ -980,7 +982,7 @@ In the last example, "new-property.edn" and
 "/home/mary/marys-kim-properties/dissociation-energy.edn" are the names of files
 that contain user-defined (local) property definitions.
 
-A KIM property instance takes the form of a "map," i.e. a set of key-value
+A KIM property instance takes the form of a "map", i.e. a set of key-value
 pairs akin to Perl's hash, Python's dictionary, or Java's Hashtable.  It
 consists of a set of property key names, each of which is referred to here by
 the *key_name* argument, that are defined as part of the relevant KIM Property
@@ -1082,10 +1084,11 @@ the form of *key_name_key*-*key_name_value* pairs).  For example,
    kim property modify 1 key mass    source-value 26.98154
    kim property modify 1 key mass    source-unit  amu
 
-where the special keyword "key" is followed by a *key_name* ("species" or
-"mass" in the above) and one or more key-value pairs.  These key-value pairs
-may continue until either another "key" keyword is given or the end of the
-command line is reached.  Thus, the above could equivalently be written as
+where the special keyword "key" is followed by a *key_name* ("species"
+or "mass" in the above) and one or more key-value pairs.  These
+key-value pairs may continue until either another "key" keyword is given
+or the end of the line is reached.  Thus, the above could equivalently
+be written as
 
 .. code-block:: LAMMPS
 
@@ -1332,13 +1335,13 @@ For example,
 Citation of OpenKIM IMs
 """""""""""""""""""""""
 
-When publishing results obtained using OpenKIM IMs researchers are requested
-to cite the OpenKIM project :ref:`(Tadmor) <kim-mainpaper>`, KIM API
-:ref:`(Elliott) <kim-api>`, and the specific IM codes used in the simulations,
-in addition to the relevant scientific references for the IM. The citation
-format for an IM is displayed on its page on
-`OpenKIM <https://openkim.org>`_ along with the corresponding BibTex file, and
-is automatically added to the LAMMPS citation reminder.
+When publishing results obtained using OpenKIM IMs researchers are
+requested to cite the OpenKIM project :ref:`(Tadmor) <kim-mainpaper>`,
+KIM API :ref:`(Elliott) <kim-api>`, and the specific IM codes used in
+the simulations, in addition to the relevant scientific references for
+the IM. The citation format for an IM is displayed on its page on
+`OpenKIM <https://openkim.org>`_ along with the corresponding BibTex
+file, and is automatically added to the LAMMPS citation reminder.
 
 Citing the IM software (KIM infrastructure and specific PM or SM codes) used in
 the simulation gives credit to the researchers who developed them and enables
@@ -1347,15 +1350,15 @@ open source efforts like OpenKIM to function.
 Restrictions
 """"""""""""
 
-The *kim* command is part of the KIM package.  It is only enabled if LAMMPS is
-built with that package.  A requirement for the KIM package, is the KIM API
-library that must be downloaded from the
-`OpenKIM website <https://openkim.org/kim-api/>`_ and installed before LAMMPS is
+The *kim* command is part of the KIM package.  It is only enabled if
+LAMMPS is built with that package.  A requirement for the KIM package,
+is the KIM API library that must be downloaded from the `OpenKIM website
+<https://openkim.org/kim-api/>`_ and installed before LAMMPS is
 compiled.  When installing LAMMPS from binary, the kim-api package is a
-dependency that is automatically downloaded and installed.  The *kim query*
-command requires the *libcurl* library to be installed.  The *kim property*
-command requires *Python* 3.6 or later and the *kim-property* python package to
-be installed.  See the KIM section of the
+dependency that is automatically downloaded and installed.  The *kim
+query* command requires the *libcurl* library to be installed.  The *kim
+property* command requires *Python* 3.6 or later and the *kim-property*
+python package to be installed.  See the KIM section of the
 :doc:`Packages details <Packages_details>` for details.
 
 Furthermore, when using *kim* command to run KIM SMs, any packages required by
